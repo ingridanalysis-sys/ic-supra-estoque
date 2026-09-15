@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { extrairTextoPdf } from '../lib/pdfExtract';
 import { parseRelatorioEstoque, unificarSnapshot } from '../lib/parsers/estoqueParser';
 import { salvarSnapshot } from '../lib/historicoPedidos';
@@ -70,13 +70,14 @@ export default function ImportarEstoque({ onSnapshotGerado }) {
   const [status, setStatus] = useState({});
   const [progresso, setProgresso] = useState({});
   const [resultados, setResultados] = useState({});
-  const [gerando, setGerando] = useState(false);
+  const [analiseGerada, setAnaliseGerada] = useState(null);
   const [erroGeral, setErroGeral] = useState(null);
 
   async function handleArquivo(chave, file) {
     setArquivos((s) => ({ ...s, [chave]: file }));
     setStatus((s) => ({ ...s, [chave]: 'processando' }));
     setResultados((r) => ({ ...r, [chave]: null }));
+    setAnaliseGerada(null);
     setErroGeral(null);
     try {
       const texto = await extrairTextoPdf(file, (atual, total) =>
@@ -94,8 +95,12 @@ export default function ImportarEstoque({ onSnapshotGerado }) {
   const todosProcessados = TIPOS.every((t) => status[t.chave] === 'ok');
   const totalAvisos = Object.values(resultados).reduce((s, r) => s + (r?.avisos?.length ?? 0), 0);
 
-  function gerarAnalise() {
-    setGerando(true);
+  // A análise é gerada sozinha assim que os 3 relatórios terminam de
+  // processar — não depende de um clique. O avanço pra aba de Alertas é
+  // adiado um instante só pra dar tempo da mensagem de sucesso aparecer,
+  // em vez de sumir da tela antes de qualquer feedback visual.
+  useEffect(() => {
+    if (!todosProcessados || analiseGerada) return;
     try {
       const snapshot = unificarSnapshot({
         positivo: resultados.positivo,
@@ -103,14 +108,14 @@ export default function ImportarEstoque({ onSnapshotGerado }) {
         zerado: resultados.zerado,
       });
       const registro = salvarSnapshot(snapshot);
-      onSnapshotGerado(registro);
+      setAnaliseGerada(registro);
+      const timer = setTimeout(() => onSnapshotGerado(registro), 1100);
+      return () => clearTimeout(timer);
     } catch (e) {
       console.error(e);
       setErroGeral('Não foi possível gerar a análise. Confira os PDFs importados.');
-    } finally {
-      setGerando(false);
     }
-  }
+  }, [todosProcessados, analiseGerada, resultados, onSnapshotGerado]);
 
   return (
     <div>
@@ -163,11 +168,14 @@ export default function ImportarEstoque({ onSnapshotGerado }) {
 
       {erroGeral && <div className="status-arquivo erro" style={{ marginBottom: 10 }}>{erroGeral}</div>}
 
-      <div className="rodape-acoes">
-        <button className="btn" disabled={!todosProcessados || gerando} onClick={gerarAnalise}>
-          {gerando ? 'Gerando análise…' : 'Gerar nova análise'}
-        </button>
-      </div>
+      {analiseGerada && (
+        <div className="status-arquivo ok" style={{ marginBottom: 10 }}>
+          ✔ Análise gerada — {analiseGerada.resumo.totalItens} itens processados. Abrindo Alertas de Compra…
+        </div>
+      )}
+      {!analiseGerada && todosProcessados && !erroGeral && (
+        <div className="status-arquivo pendente" style={{ marginBottom: 10 }}>Gerando análise…</div>
+      )}
     </div>
   );
 }

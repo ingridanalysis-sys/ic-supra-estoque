@@ -64,3 +64,38 @@ export function listarMesesImportados() {
   const todos = ler();
   return Object.values(todos).sort((a, b) => (a.mesChave < b.mesChave ? -1 : 1));
 }
+
+/**
+ * Soma volume e faturamento por código de produto, considerando TODOS os
+ * meses de vendas importados (Mix de Vendas). É a fonte única usada tanto
+ * para decidir se um produto tem "venda recente registrada" (proteção contra
+ * descontinuação — ver alertas.js) quanto para mostrar faturamento/volume na
+ * aba Alertas de Compra.
+ *
+ * Um código aparecer aqui (mesmo com valores baixos) significa que ele
+ * vendeu em algum mês importado — meses sem venda de um produto simplesmente
+ * não o listam, então presença no mapa = venda real registrada.
+ */
+export function getResumoVendasPorProduto() {
+  const meses = listarMesesImportados();
+  const resumo = {};
+  for (const mes of meses) {
+    for (const item of mes.itens) {
+      const atual = resumo[item.codigo] ?? { qtdeVolumes: 0, totVendas: 0 };
+      atual.qtdeVolumes += item.qtdeVolumes;
+      atual.totVendas += item.totVendas;
+      resumo[item.codigo] = atual;
+    }
+  }
+  return resumo;
+}
+
+/**
+ * Conjunto de códigos com pelo menos uma venda registrada em algum mês
+ * importado. Usado para proteger produtos de qualquer marcação de
+ * "descontinuado" — zerado no estoque significa "precisa comprar", nunca
+ * "descontinuar", quando o item vende.
+ */
+export function getCodigosComVendaRegistrada() {
+  return new Set(Object.keys(getResumoVendasPorProduto()));
+}

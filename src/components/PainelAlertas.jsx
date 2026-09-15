@@ -2,8 +2,29 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { getUltimoSnapshot } from '../lib/historicoPedidos';
 import { gerarPainelAlertas } from '../lib/alertas';
 import { getConfigProduto, salvarConfigProduto, importarConfigsEmLote } from '../lib/configProdutos';
-import { inferirSetor, SETORES } from '../lib/setores';
+import { inferirSetor, SETORES, SETORES_NAO_DESCONTINUAVEIS, SETORES_FLAG_GESTAO } from '../lib/setores';
 import TagAlerta from './TagAlerta';
+
+function fmtMoeda(v) {
+  return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+const ORDENACOES = [
+  { chave: 'URGENCIA', label: 'Ordenar por urgência' },
+  { chave: 'FATURAMENTO', label: 'Ordenar por impacto no faturamento' },
+];
+
+/** "⚑ Fora da linha atual — decisão da gestão", usada tanto no cabeçalho do setor quanto na linha do item. */
+function FlagGestao() {
+  return (
+    <span
+      title="Setor fora da linha atual de comercialização — decisão de voltar a vender ou não é da gestão, não do sistema."
+      style={{ color: 'var(--amarelo)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
+    >
+      ⚑ Fora da linha atual — decisão da gestão
+    </span>
+  );
+}
 
 const FILTROS_NIVEL = [
   { chave: 'TODOS', label: 'Todos' },
@@ -34,7 +55,7 @@ function LinhaConfig({ item, onSalvar, onCancelar }) {
 
   return (
     <tr>
-      <td colSpan={9} style={{ background: 'var(--azul-claro)' }}>
+      <td colSpan={11} style={{ background: 'var(--azul-claro)' }}>
         <div className="linha-flex" style={{ flexWrap: 'wrap', gap: 12, padding: '6px 0' }}>
           <label style={{ fontSize: 11 }}>
             Estoque mínimo{' '}
@@ -97,8 +118,14 @@ function LinhaItem({ item, selecionado, onAlternarSelecao, editando, setEditando
         <td>{item.unidade || '-'}</td>
         <td>{item.quantidade}</td>
         <td>{item.alerta.diasCobertura != null ? item.alerta.diasCobertura.toFixed(1) : '—'}</td>
+        <td style={{ whiteSpace: 'nowrap' }}>
+          {item.vendaRecente
+            ? <span title={`${item.vendaRecente.qtdeVolumes.toLocaleString('pt-BR')} un. vendidas nos meses importados`}>{fmtMoeda(item.vendaRecente.totVendas)}</span>
+            : <span style={{ color: 'var(--muted)' }}>—</span>}
+        </td>
         <td><TagAlerta nivel={item.alerta.nivel} /></td>
         <td style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 220 }}>{item.alerta.motivo}</td>
+        <td>{item.precisaFlagGestao && <FlagGestao />}</td>
         <td>
           <button className="btn secundario pequeno" onClick={() => setEditando(editando === item.codigo ? null : item.codigo)}>
             {editando === item.codigo ? 'Fechar' : 'Configurar'}
@@ -120,6 +147,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
   const atual = snapshot ?? getUltimoSnapshot();
   const [filtroNivel, setFiltroNivel] = useState('TODOS');
   const [filtroSetor, setFiltroSetor] = useState('TODOS');
+  const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [limite, setLimite] = useState(0);
   const [busca, setBusca] = useState('');
   const [editando, setEditando] = useState(null);
@@ -151,9 +179,12 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       const b = busca.trim().toLowerCase();
       lista = lista.filter((i) => i.descricao.toLowerCase().includes(b) || i.codigo.includes(b));
     }
+    if (ordenacao === 'FATURAMENTO') {
+      lista = [...lista].sort((a, b) => (b.vendaRecente?.totVendas ?? 0) - (a.vendaRecente?.totVendas ?? 0));
+    }
     if (limite > 0) lista = lista.slice(0, limite);
     return lista;
-  }, [painel, filtroNivel, filtroSetor, busca, limite]);
+  }, [painel, filtroNivel, filtroSetor, busca, limite, ordenacao]);
 
   // Renderizar milhares de <tr> de uma vez trava o navegador, então a lista
   // é revelada em blocos — o cálculo acima já é rápido, o gargalo é o DOM.
@@ -171,7 +202,8 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       if (!mapa.has(item.setor)) mapa.set(item.setor, []);
       mapa.get(item.setor).push(item);
     }
-    // mantém a ordem de urgência dentro do setor (já vem ordenado de listaFiltrada)
+    // mantém a ordem já definida em listaFiltrada dentro do setor (urgência
+    // ou impacto no faturamento, dependendo da ordenação escolhida)
     return Array.from(mapa.entries());
   }, [listaParaRenderizar]);
 
@@ -200,15 +232,29 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
   function retrairTodos() { setSetoresFechados(new Set(gruposPorSetor.map(([setor]) => setor))); }
 
   function marcarSetorComoDescontinuado(setor, itensDoSetor) {
+    // Zerado no estoque significa "precisa comprar", nunca "descontinuar" —
+    // qualquer item com venda registrada no Mix de Vendas é protegido e sai
+    // do lote antes mesmo da confirmação, pra quem está clicando já ver o
+    // impacto real da ação.
+    const protegidos = itensDoSetor.filter((item) => item.vendaRecente);
+    const candidatos = itensDoSetor.filter((item) => !item.vendaRecente);
+
     const confirmado = window.confirm(
-      `Marcar os ${itensDoSetor.length} item(ns) do setor "${setor}" como descontinuados?\n\n` +
-      'Eles vão parar de aparecer nos alertas de compra (mas continuam contados no estoque). ' +
+      `Marcar ${candidatos.length} de ${itensDoSetor.length} item(ns) do setor "${setor}" como descontinuados?\n\n` +
+      (protegidos.length > 0
+        ? `${protegidos.length} item(ns) têm venda registrada no Mix de Vendas e serão mantidos ativos automaticamente — não entram no lote.\n\n`
+        : '') +
+      'Os demais vão parar de aparecer nos alertas de compra (mas continuam contados no estoque). ' +
       'Dá para desfazer depois, item por item, em "Configurar".'
     );
     if (!confirmado) return;
     const lote = {};
-    for (const item of itensDoSetor) lote[item.codigo] = { descontinuado: true };
+    for (const item of candidatos) lote[item.codigo] = { descontinuado: true };
     importarConfigsEmLote(lote);
+    window.alert(
+      `${candidatos.length} de ${itensDoSetor.length} itens marcados` +
+      (protegidos.length > 0 ? ` — ${protegidos.length} tinham venda recente e foram mantidos ativos.` : '.')
+    );
     setVersao((v) => v + 1);
   }
 
@@ -242,6 +288,10 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
           {OPCOES_QUANTIDADE.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
         </select>
 
+        <select value={ordenacao} onChange={(e) => setOrdenacao(e.target.value)}>
+          {ORDENACOES.map((o) => <option key={o.chave} value={o.chave}>{o.label}</option>)}
+        </select>
+
         <button className="btn secundario pequeno" onClick={expandirTodos}>Expandir todos</button>
         <button className="btn secundario pequeno" onClick={retrairTodos}>Retrair todos</button>
 
@@ -258,7 +308,8 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
 
       {listaFiltrada.length > qtdRenderizada && (
         <div className="resumo-arquivo" style={{ marginBottom: 10, textAlign: 'left' }}>
-          Mostrando {qtdRenderizada} de {listaFiltrada.length} itens (ordenados por urgência) — use os filtros de
+          Mostrando {qtdRenderizada} de {listaFiltrada.length} itens
+          ({ordenacao === 'FATURAMENTO' ? 'ordenados por impacto no faturamento' : 'ordenados por urgência'}) — use os filtros de
           setor, nível ou quantidade pra ver menos de uma vez, ou{' '}
           <button className="btn secundario pequeno" onClick={() => setQtdRenderizada((n) => n + PAGINA)}>
             carregar mais {Math.min(PAGINA, listaFiltrada.length - qtdRenderizada)}
@@ -269,24 +320,29 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       {gruposPorSetor.map(([setor, itensDoSetor]) => {
         const aberto = !setoresFechados.has(setor);
         const totalNoSetor = setorCompletoMapa.get(setor)?.length ?? itensDoSetor.length;
+        const podeDescontinuar = !SETORES_NAO_DESCONTINUAVEIS.includes(setor);
+        const precisaFlagGestao = SETORES_FLAG_GESTAO.includes(setor);
         return (
           <div className="setor-bloco" key={setor}>
             <div className="setor-header" onClick={() => alternarSetor(setor)}>
               <span className={`seta ${aberto ? 'aberto' : ''}`}>▶</span>
               {setor}
+              {precisaFlagGestao && <FlagGestao />}
               <span className="contagem-setor">
                 {totalNoSetor > itensDoSetor.length ? `${itensDoSetor.length} de ${totalNoSetor}` : totalNoSetor} item(ns)
               </span>
-              <button
-                className="btn secundario pequeno"
-                style={{ marginLeft: 12 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  marcarSetorComoDescontinuado(setor, setorCompletoMapa.get(setor) ?? itensDoSetor);
-                }}
-              >
-                Marcar setor como descontinuado
-              </button>
+              {podeDescontinuar && (
+                <button
+                  className="btn secundario pequeno"
+                  style={{ marginLeft: 12 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    marcarSetorComoDescontinuado(setor, setorCompletoMapa.get(setor) ?? itensDoSetor);
+                  }}
+                >
+                  Marcar setor como descontinuado
+                </button>
+              )}
             </div>
             {aberto && (
               <table>
@@ -298,8 +354,10 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
                     <th>Un.</th>
                     <th>Estoque</th>
                     <th>Cobertura (dias)</th>
+                    <th>Faturamento recente</th>
                     <th>Nível</th>
                     <th>Motivo</th>
+                    <th></th>
                     <th></th>
                   </tr>
                 </thead>

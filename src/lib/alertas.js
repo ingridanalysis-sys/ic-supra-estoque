@@ -9,7 +9,8 @@
 
 import { getConfigProduto, getTodasConfigs } from './configProdutos';
 import { getPedidosPendentesPorCodigo, getPedidosPendentesMapa } from './historicoPedidos';
-import { inferirSetor } from './setores';
+import { getResumoVendasPorProduto } from './historicoVendas';
+import { inferirSetor, SETORES_FLAG_GESTAO } from './setores';
 
 /**
  * Classifica um item do estoque em um nível de alerta.
@@ -26,8 +27,15 @@ import { inferirSetor } from './setores';
  *  4. ATENCAO    — estoque abaixo do mínimo cadastrado
  *  5. MONITORAR  — dentro da faixa aceitável mas próximo do mínimo (<50% de folga)
  *  6. OK         — estoque confortável
+ *
+ * `temVendaRegistrada` (opcional, resolvido sozinho se não vier) indica se o
+ * código apareceu em algum mês importado do Mix de Vendas. Zerado no estoque
+ * significa "precisa comprar", nunca "descontinuar" — por isso um produto
+ * com venda registrada NUNCA é tratado como descontinuado aqui, mesmo que a
+ * flag `cfg.descontinuado` já esteja salva (ex: de uma marcação em lote por
+ * setor anterior a essa regra existir).
  */
-export function classificarItem(item, config = undefined, pendente = undefined) {
+export function classificarItem(item, config = undefined, pendente = undefined, temVendaRegistrada = undefined) {
   const cfg = config !== undefined ? config : getConfigProduto(item.codigo);
   const pendenteResolvido = pendente !== undefined ? pendente : getPedidosPendentesPorCodigo(item.codigo);
   const saldoConsiderandoPedidos = item.quantidade + pendenteResolvido;
@@ -41,7 +49,11 @@ export function classificarItem(item, config = undefined, pendente = undefined) 
     };
   }
 
-  if (cfg?.descontinuado) {
+  const vendeu = temVendaRegistrada !== undefined
+    ? temVendaRegistrada
+    : Object.prototype.hasOwnProperty.call(getResumoVendasPorProduto(), item.codigo);
+
+  if (cfg?.descontinuado && !vendeu) {
     return { nivel: 'OK', motivo: 'Produto marcado como descontinuado — ignorado nos alertas.', diasCobertura: null, saldoConsiderandoPedidos };
   }
 
@@ -118,13 +130,16 @@ const ORDEM_NIVEL = { NEGATIVO: 0, RUPTURA: 1, CRITICO: 2, ATENCAO: 3, MONITORAR
 export function gerarPainelAlertas(itens) {
   const todasConfigs = getTodasConfigs();
   const pedidosPendentesMapa = getPedidosPendentesMapa();
+  const resumoVendas = getResumoVendasPorProduto();
 
   const classificados = itens.map((item) => {
     const config = todasConfigs[item.codigo] ?? null;
     const pendente = pedidosPendentesMapa[item.codigo] ?? 0;
-    const alerta = classificarItem(item, config, pendente);
+    const vendaRecente = resumoVendas[item.codigo] ?? null;
+    const alerta = classificarItem(item, config, pendente, vendaRecente !== null);
     const setor = config?.setor ?? inferirSetor(item.descricao);
-    return { ...item, alerta, setor };
+    const precisaFlagGestao = SETORES_FLAG_GESTAO.includes(setor);
+    return { ...item, alerta, setor, vendaRecente, precisaFlagGestao };
   });
 
   classificados.sort((a, b) => ORDEM_NIVEL[a.alerta.nivel] - ORDEM_NIVEL[b.alerta.nivel]);

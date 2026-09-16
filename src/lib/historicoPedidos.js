@@ -54,13 +54,14 @@ export function getSnapshotAnterior() {
  * }
  */
 
-export function criarPedido({ fornecedor, itens }) {
+export function criarPedido({ fornecedor, itens, observacoes }) {
   const lista = ler(CHAVE_PEDIDOS, []);
   const pedido = {
     id: crypto.randomUUID(),
     criadoEm: new Date().toISOString(),
     fornecedor,
     status: 'pendente',
+    observacoes: observacoes || null,
     itens: itens.map((i) => ({ ...i, qtdRecebida: 0 })),
   };
   lista.unshift(pedido);

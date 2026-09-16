@@ -19,7 +19,27 @@ function fmtMoeda(v) {
  * Gera o PDF da ordem de compra, uma seção por fornecedor.
  * `grupos` = [{ fornecedor, itens: [{codigo, descricao, unidade, qtd, custoUnit, nivel}] }]
  */
-export async function gerarOrdemCompraPdf({ grupos, referencia, logoBytes }) {
+// Quebra um texto livre em linhas que respeitam uma largura máxima, sem
+// cortar palavra no meio — necessário porque pdf-lib não faz isso sozinho.
+function quebrarLinhas(texto, font, size, larguraMax) {
+  const linhas = [];
+  for (const paragrafo of texto.split('\n')) {
+    let atual = '';
+    for (const palavra of paragrafo.split(' ')) {
+      const tentativa = atual ? `${atual} ${palavra}` : palavra;
+      if (font.widthOfTextAtSize(tentativa, size) > larguraMax && atual) {
+        linhas.push(atual);
+        atual = palavra;
+      } else {
+        atual = tentativa;
+      }
+    }
+    linhas.push(atual);
+  }
+  return linhas;
+}
+
+export async function gerarOrdemCompraPdf({ grupos, referencia, logoBytes, observacoes }) {
   const pdf = await PDFDocument.create();
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -134,6 +154,19 @@ export async function gerarOrdemCompraPdf({ grupos, referencia, logoBytes }) {
   page.drawText(`VALOR TOTAL DA ORDEM DE COMPRA: ${fmtMoeda(valorTotalGeral)}`, {
     x: MARGEM, y, size: 12, font: fontBold, color: AZUL,
   });
+
+  if (observacoes) {
+    y -= 28;
+    const linhas = quebrarLinhas(observacoes, fontRegular, 9, LARGURA_PAGINA - 2 * MARGEM);
+    garantirEspaco(16 + linhas.length * 12);
+    page.drawText('Observações', { x: MARGEM, y, size: 9, font: fontBold, color: CINZA_MUTED });
+    y -= 14;
+    for (const linha of linhas) {
+      garantirEspaco(12);
+      page.drawText(linha, { x: MARGEM, y, size: 9, font: fontRegular, color: CINZA_TEXTO });
+      y -= 12;
+    }
+  }
 
   return pdf.save();
 }

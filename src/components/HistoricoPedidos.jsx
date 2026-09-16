@@ -53,6 +53,12 @@ export default function HistoricoPedidos() {
               </div>
             </div>
 
+            {aberto === pedido.id && pedido.observacoes && (
+              <div style={{ marginTop: 12, fontSize: 12, background: 'var(--cinza)', borderRadius: 6, padding: '8px 10px', whiteSpace: 'pre-wrap' }}>
+                <strong>Observações:</strong> {pedido.observacoes}
+              </div>
+            )}
+
             {aberto === pedido.id && (
               <table style={{ marginTop: 12 }}>
                 <thead>

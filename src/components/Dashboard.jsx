@@ -1,6 +1,9 @@
 import { getUltimoSnapshot, getSnapshotAnterior } from '../lib/historicoPedidos';
 import { gerarPainelAlertas } from '../lib/alertas';
+import { listarMesesImportados } from '../lib/historicoVendas';
 import AnaliseIA from './AnaliseIA';
+import GraficoFaturamentoEstoque from './GraficoFaturamentoEstoque';
+import EscoamentoEstoque from './EscoamentoEstoque';
 
 function fmtMoeda(v) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -56,6 +59,10 @@ export default function Dashboard({ snapshot }) {
           <div className="kpi-lbl">Itens com estoque negativo</div>
         </div>
       </div>
+
+      <GraficoFaturamentoEstoque meses={listarMesesImportados()} valorTotalEstoque={resumo.valorTotalEstoque} />
+
+      <EscoamentoEstoque itensEstoque={atual.itens} />
 
       <div className="card card-blue" style={{ background: 'var(--azul-claro)' }}>
         <h3>📌 Próximo passo</h3>

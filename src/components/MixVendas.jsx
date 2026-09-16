@@ -32,6 +32,7 @@ export default function MixVendas() {
   const [versao, setVersao] = useState(0);
   const meses = useMemo(() => listarMesesImportados(), [versao]);
   const [mesSelecionado, setMesSelecionado] = useState('ACUMULADO');
+  const [filtroSetor, setFiltroSetor] = useState('TODOS');
   const [setoresFechados, setSetoresFechados] = useState(() => new Set());
 
   // itens do período selecionado, já com o valor somado por produto quando
@@ -91,6 +92,16 @@ export default function MixVendas() {
 
   const maiorSetor = Math.max(1, ...gruposPorSetor.map((g) => g.totalSetor));
 
+  // isola um único setor no detalhamento por produto, sem afetar a tabela
+  // de participação geral acima (essa continua mostrando todos)
+  const gruposParaDetalhe = useMemo(
+    () => (filtroSetor === 'TODOS' ? gruposPorSetor : gruposPorSetor.filter((g) => g.setor === filtroSetor)),
+    [gruposPorSetor, filtroSetor]
+  );
+
+  function expandirTodos() { setSetoresFechados(new Set()); }
+  function retrairTodos() { setSetoresFechados(new Set(gruposParaDetalhe.map((g) => g.setor))); }
+
   function alternarSetor(setor) {
     setSetoresFechados((s) => {
       const copia = new Set(s);
@@ -148,8 +159,19 @@ export default function MixVendas() {
             </table>
           </div>
 
-          <h3 style={{ marginTop: 20, marginBottom: 8 }}>Detalhe por produto, dentro de cada setor</h3>
-          {gruposPorSetor.map((g) => {
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 20, marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>Detalhe por produto, dentro de cada setor</h3>
+            <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} style={{ marginLeft: 'auto' }}>
+              <option value="TODOS">Todos os setores</option>
+              {gruposPorSetor.map((g) => <option key={g.setor} value={g.setor}>{g.setor}</option>)}
+            </select>
+            <button className="btn secundario pequeno" onClick={expandirTodos}>Expandir todos</button>
+            <button className="btn secundario pequeno" onClick={retrairTodos}>Retrair todos</button>
+          </div>
+
+          {gruposParaDetalhe.length === 0 && <div className="vazio">Nenhum produto nesse setor, no período selecionado.</div>}
+
+          {gruposParaDetalhe.map((g) => {
             const aberto = !setoresFechados.has(g.setor);
             const maiorProduto = Math.max(1, ...g.itens.map((i) => i.totVendas));
             return (

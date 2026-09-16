@@ -1,5 +1,6 @@
 :root {
   --azul: #0C3D6E;
+  --azul-logo: #002060; /* azul exato do logo IC SupraHospitalar, usado na faixa principal */
   --azul-claro: #E6F1FB;
   --azul-hover: #185FA5;
   --verde: #1A7A4A;
@@ -14,6 +15,7 @@
   --amarelo-claro: #FFFBEB;
   --roxo: #7C3AED;
   --roxo-claro: #F3E8FF;
+  --laranja: #F97316;
 }
 
 * { box-sizing: border-box; }
@@ -32,25 +34,30 @@ body {
 }
 
 .topbar {
-  background: var(--azul);
+  background: var(--azul-logo);
   color: #fff;
-  padding: 14px 24px;
+  padding: 10px 24px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
 }
 
 .topbar-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
 }
 
-.topbar-brand img { height: 28px; }
+.topbar-brand img { height: 42px; width: auto; display: block; }
 
-.topbar-brand .titulo { font-size: 15px; font-weight: 700; }
-.topbar-brand .subtitulo { font-size: 11px; opacity: 0.75; }
+.topbar-brand .titulo {
+  font-size: 16px;
+  font-weight: 700;
+  padding-left: 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
 
 .badge-modo {
   font-size: 11px;
@@ -250,7 +257,7 @@ tr:nth-child(even) td { background: #FAFBFC; }
 }
 .filtros button.active { border-color: var(--azul); color: var(--azul); background: var(--azul-claro); }
 
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], select, textarea {
   border: 1px solid var(--cinza-borda);
   border-radius: 6px;
   padding: 6px 9px;
@@ -266,4 +273,6 @@ input[type="text"], input[type="number"], select {
 @media (max-width: 700px) {
   .kpi-grid, .dropzone-grid { grid-template-columns: 1fr; }
   .conteudo { padding: 16px 12px 60px; }
+  .topbar-brand img { height: 32px; }
+  .topbar-brand .titulo { font-size: 14px; padding-left: 12px; }
 }

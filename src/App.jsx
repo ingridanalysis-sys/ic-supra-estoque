@@ -56,11 +56,8 @@ export default function App() {
     <div className="shell">
       <header className="topbar">
         <div className="topbar-brand">
-          <img src="/logo-ic.png" alt="IC Supra Hospitalar" />
-          <div>
-            <div className="titulo">Gestão de Estoque</div>
-            <div className="subtitulo">IC Supra Hospitalar</div>
-          </div>
+          <img src="/logo-ic-header.png" alt="IC SupraHospitalar" />
+          <span className="titulo">Gestão de Estoque</span>
         </div>
         <span className="badge-modo">○ Modo local — sem persistência entre sessões</span>
       </header>

@@ -18,6 +18,7 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
     return iniciais;
   });
   const [gerando, setGerando] = useState(false);
+  const [observacoes, setObservacoes] = useState('');
 
   function sugerirQuantidade(item) {
     if (item.alerta?.nivel === 'NEGATIVO') return Math.abs(item.quantidade);
@@ -68,16 +69,19 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
         grupos,
         referencia: `Ordem de compra — ${new Date().toLocaleDateString('pt-BR')}`,
         logoBytes,
+        observacoes: observacoes.trim() || null,
       });
       baixarPdf(bytes, `ordem-de-compra-ic-supra-${Date.now()}.pdf`);
 
-      // registra no histórico, um pedido por fornecedor
+      // registra no histórico, um pedido por fornecedor (a observação vale
+      // pra ordem inteira, então fica salva em cada pedido gerado por ela)
       for (const grupo of grupos) {
         const pedido = criarPedido({
           fornecedor: grupo.fornecedor,
           itens: grupo.itens.map((i) => ({
             codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, qtdPedida: i.qtd, custoUnit: i.custoUnit,
           })),
+          observacoes: observacoes.trim() || null,
         });
         onPedidoCriado?.(pedido);
       }
@@ -158,6 +162,17 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
           <span>Total geral</span>
           <span>R$ {valorTotal.toFixed(2).replace('.', ',')}</span>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3>Observações</h3>
+        <textarea
+          value={observacoes}
+          onChange={(e) => setObservacoes(e.target.value)}
+          placeholder="Descrição livre — combinação com o fornecedor, urgência, prazo de entrega, etc. Entra no PDF e fica salva no histórico do pedido."
+          rows={3}
+          style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+        />
       </div>
 
       <div className="rodape-acoes">

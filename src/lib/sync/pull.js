@@ -24,9 +24,7 @@ function salvarLocal(chave, valor) {
 }
 
 async function puxarConfigProdutos() {
-  const builder = supabase.from('config_produtos').select('*');
-  console.warn('[debug] config_produtos url:', builder.url?.toString(), 'headers:', JSON.stringify(builder.headers));
-  const { data, error } = await builder;
+  const { data, error } = await supabase.from('config_produtos').select('*');
   if (error) throw error;
 
   const local = lerLocal(CHAVE_CONFIG_PRODUTOS, {});

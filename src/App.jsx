@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 import ImportarEstoque from './components/ImportarEstoque';
 import Dashboard from './components/Dashboard';
@@ -8,6 +8,8 @@ import HistoricoPedidos from './components/HistoricoPedidos';
 import MixVendas from './components/MixVendas';
 import { getUltimoSnapshot } from './lib/historicoPedidos';
 import { gerarPainelAlertas } from './lib/alertas';
+import { isSupabaseConfigured } from './lib/supabaseClient';
+import { pullTudoDoSupabase } from './lib/sync/pull';
 
 const ABAS = [
   { chave: 'dashboard', label: 'Visão Geral' },
@@ -22,6 +24,23 @@ export default function App() {
   const [aba, setAba] = useState('dashboard');
   const [snapshot, setSnapshot] = useState(() => getUltimoSnapshot());
   const [selecionados, setSelecionados] = useState({}); // { [codigo]: itemComAlerta }
+  // Só existe sincronização quando o Supabase está configurado — sem isso,
+  // o app segue 100% em modo local, exatamente como antes.
+  const [sincronizando, setSincronizando] = useState(() => isSupabaseConfigured());
+
+  // Puxa tudo do Supabase ANTES de liberar a tela — uma escrita local
+  // enquanto o pull ainda está em voo poderia ser sobrescrita pela versão
+  // (mais antiga) do servidor. Ver src/lib/sync/pull.js.
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    let cancelado = false;
+    pullTudoDoSupabase().finally(() => {
+      if (cancelado) return;
+      setSnapshot(getUltimoSnapshot());
+      setSincronizando(false);
+    });
+    return () => { cancelado = true; };
+  }, []);
 
   const painelAtual = useMemo(() => (snapshot ? gerarPainelAlertas(snapshot.itens) : []), [snapshot]);
   const alertasUrgentes = useMemo(
@@ -59,42 +78,52 @@ export default function App() {
           <img src="/logo-ic-header.png" alt="IC SupraHospitalar" />
           <span className="titulo">Gestão de Estoque</span>
         </div>
-        <span className="badge-modo">○ Modo local — sem persistência entre sessões</span>
+        <span className="badge-modo">
+          {isSupabaseConfigured()
+            ? (sincronizando ? '↻ Sincronizando com Supabase…' : '● Sincronizado com Supabase')
+            : '○ Modo local — sem persistência entre sessões'}
+        </span>
       </header>
 
-      <nav className="tabs">
-        {ABAS.map((a) => (
-          <button key={a.chave} className={aba === a.chave ? 'active' : ''} onClick={() => setAba(a.chave)}>
-            {a.label}
-            {a.chave === 'alertas' && alertasUrgentes > 0 && <span className="contagem">{alertasUrgentes}</span>}
-            {a.chave === 'ordem' && Object.keys(selecionados).length > 0 && (
-              <span className="contagem">{Object.keys(selecionados).length}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+      {sincronizando ? (
+        <div className="splash-sync">Sincronizando dados salvos no Supabase…</div>
+      ) : (
+        <>
+          <nav className="tabs">
+            {ABAS.map((a) => (
+              <button key={a.chave} className={aba === a.chave ? 'active' : ''} onClick={() => setAba(a.chave)}>
+                {a.label}
+                {a.chave === 'alertas' && alertasUrgentes > 0 && <span className="contagem">{alertasUrgentes}</span>}
+                {a.chave === 'ordem' && Object.keys(selecionados).length > 0 && (
+                  <span className="contagem">{Object.keys(selecionados).length}</span>
+                )}
+              </button>
+            ))}
+          </nav>
 
-      <main className="conteudo">
-        {aba === 'dashboard' && <Dashboard snapshot={snapshot} />}
-        {aba === 'importar' && <ImportarEstoque onSnapshotGerado={handleSnapshotGerado} />}
-        {aba === 'alertas' && (
-          <PainelAlertas
-            snapshot={snapshot}
-            selecionados={selecionados}
-            onAlternarSelecao={alternarSelecao}
-            onIrParaOrdem={() => setAba('ordem')}
-          />
-        )}
-        {aba === 'ordem' && (
-          <OrdemCompra
-            selecionados={selecionados}
-            onRemoverSelecao={removerSelecao}
-            onPedidoCriado={() => setSelecionados({})}
-          />
-        )}
-        {aba === 'historico' && <HistoricoPedidos />}
-        {aba === 'mixvendas' && <MixVendas />}
-      </main>
+          <main className="conteudo">
+            {aba === 'dashboard' && <Dashboard snapshot={snapshot} />}
+            {aba === 'importar' && <ImportarEstoque onSnapshotGerado={handleSnapshotGerado} />}
+            {aba === 'alertas' && (
+              <PainelAlertas
+                snapshot={snapshot}
+                selecionados={selecionados}
+                onAlternarSelecao={alternarSelecao}
+                onIrParaOrdem={() => setAba('ordem')}
+              />
+            )}
+            {aba === 'ordem' && (
+              <OrdemCompra
+                selecionados={selecionados}
+                onRemoverSelecao={removerSelecao}
+                onPedidoCriado={() => setSelecionados({})}
+              />
+            )}
+            {aba === 'historico' && <HistoricoPedidos />}
+            {aba === 'mixvendas' && <MixVendas />}
+          </main>
+        </>
+      )}
     </div>
   );
 }

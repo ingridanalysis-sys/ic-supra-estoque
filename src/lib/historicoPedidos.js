@@ -1,5 +1,13 @@
-const CHAVE_SNAPSHOTS = 'ic_supra_snapshots_v1';
-const CHAVE_PEDIDOS = 'ic_supra_pedidos_v1';
+import { pushSnapshot, pushPedidoUpsert } from './sync/push';
+
+export const CHAVE_SNAPSHOTS = 'ic_supra_snapshots_v1';
+export const CHAVE_PEDIDOS = 'ic_supra_pedidos_v1';
+
+// Só os 2 snapshots mais recentes ficam no localStorage — cada um carrega o
+// catálogo inteiro (~10 mil itens), então guardar histórico ilimitado aqui
+// estoura a cota do navegador. O histórico completo (todo snapshot já
+// gerado) é preservado no Supabase, insert-only — ver src/lib/sync/push.js.
+const MAX_SNAPSHOTS_LOCAIS = 2;
 
 function ler(chave, padrao) {
   try {
@@ -26,7 +34,8 @@ export function salvarSnapshot(snapshot) {
     avisos: snapshot.avisos,
   };
   lista.unshift(registro); // mais recente primeiro
-  salvar(CHAVE_SNAPSHOTS, lista);
+  pushSnapshot(registro); // manda o snapshot inteiro pro Supabase antes de truncar localmente
+  salvar(CHAVE_SNAPSHOTS, lista.slice(0, MAX_SNAPSHOTS_LOCAIS));
   return registro;
 }
 
@@ -56,9 +65,11 @@ export function getSnapshotAnterior() {
 
 export function criarPedido({ fornecedor, itens, observacoes }) {
   const lista = ler(CHAVE_PEDIDOS, []);
+  const agora = new Date().toISOString();
   const pedido = {
     id: crypto.randomUUID(),
-    criadoEm: new Date().toISOString(),
+    criadoEm: agora,
+    atualizadoEm: agora,
     fornecedor,
     status: 'pendente',
     observacoes: observacoes || null,
@@ -66,6 +77,7 @@ export function criarPedido({ fornecedor, itens, observacoes }) {
   };
   lista.unshift(pedido);
   salvar(CHAVE_PEDIDOS, lista);
+  pushPedidoUpsert(pedido);
   return pedido;
 }
 
@@ -78,7 +90,9 @@ export function atualizarStatusPedido(id, status) {
   const idx = lista.findIndex((p) => p.id === id);
   if (idx >= 0) {
     lista[idx].status = status;
+    lista[idx].atualizadoEm = new Date().toISOString();
     salvar(CHAVE_PEDIDOS, lista);
+    pushPedidoUpsert(lista[idx]);
   }
   return lista[idx];
 }
@@ -94,7 +108,9 @@ export function registrarRecebimento(id, codigo, qtdRecebidaAdicional) {
   const totalPedido = pedido.itens.reduce((s, i) => s + i.qtdPedida, 0);
   const totalRecebido = pedido.itens.reduce((s, i) => s + (i.qtdRecebida ?? 0), 0);
   pedido.status = totalRecebido === 0 ? 'pendente' : totalRecebido >= totalPedido ? 'recebido' : 'parcial';
+  pedido.atualizadoEm = new Date().toISOString();
   salvar(CHAVE_PEDIDOS, lista);
+  pushPedidoUpsert(pedido);
   return pedido;
 }
 

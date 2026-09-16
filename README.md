@@ -44,6 +44,9 @@ A função de IA (`analise-estoque.js`) **não roda** com `npm run dev` puro (Vi
 Netlify Functions). Para testá-la localmente, use `netlify dev` com a variável de ambiente
 exportada no shell (veja a seção de IA abaixo).
 
+Pra testar a persistência Supabase localmente, copie `.env.example` para `.env` (não é
+commitado) e preencha as duas variáveis — veja a seção abaixo.
+
 ## Publicando no Netlify
 
 1. Suba esta pasta para um repositório Git, ou arraste direto em
@@ -57,15 +60,28 @@ exportada no shell (veja a seção de IA abaixo).
 1. Crie um projeto em [supabase.com](https://supabase.com) (plano gratuito é suficiente para começar).
 2. **SQL Editor** → cole o conteúdo de `schema.sql` → **Run**.
 3. **Project Settings → API** → copie a `Project URL` e a `anon public key`.
-4. No Netlify: **Site settings → Environment variables**, adicione:
+4. No Netlify (ou no seu `.env` local): configure
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-5. **Deploys → Trigger deploy**.
+5. No Netlify: **Deploys → Trigger deploy** (ou reinicie `npm run dev` localmente).
 
-> Nesta primeira versão o app roda em modo local (localStorage). A camada Supabase
-> ainda não está implementada no código — é o próximo passo natural quando fizer sentido
-> migrar de "protótipo validando o formato dos relatórios" para "sistema em produção com
-> histórico entre sessões e múltiplos usuários". O `schema.sql` já está pronto para isso.
+Com as duas variáveis presentes, o app passa a sincronizar de verdade: ao abrir, uma tela
+rápida de "Sincronizando…" aparece enquanto ele busca os dados mais recentes do Supabase
+(config de produtos, os 2 últimos snapshots de estoque, pedidos de compra e todos os meses
+de vendas importados) e faz merge com o que já estava salvo localmente. Toda escrita
+depois disso (importar estoque/vendas, configurar produto, gerar ordem, registrar
+recebimento) é salva local **e** enviada em segundo plano pro Supabase — se a rede cair ou
+o Supabase estiver fora do ar, o app nunca trava, só volta a sincronizar na próxima vez.
+
+**Sem essas variáveis, nada muda**: o app continua funcionando 100% em modo local
+(localStorage), exatamente como antes.
+
+> **Sem login ainda.** A chave anônima do Supabase (`VITE_SUPABASE_ANON_KEY`) fica visível
+> no site publicado — as policies de RLS no `schema.sql` são propositalmente permissivas
+> (qualquer um com a chave lê/escreve tudo) porque não existe autenticação de usuário no
+> app hoje. Isso é aceitável para uma ferramenta interna com URL não divulgada, mas deve
+> ser revisitado (trocar as policies por checagem de `auth.uid()`) antes de tratar isso
+> como definitivo — a tabela `perfis` no schema já está preparada para esse próximo passo.
 
 ## Configurando a IA da Análise de Estoque
 
@@ -89,7 +105,8 @@ Custo por análise gerada: menos de um centavo.
 - **Fornecedor por produto** — a Net Use não traz fornecedor no relatório de estoque. Hoje
   você define o fornecedor na hora de montar a ordem de compra (fica salvo e sugerido nas
   próximas vezes). Se você tiver uma lista produto→fornecedor, dá para importar em lote.
-- **Persistência Supabase** — ver seção acima.
+- **Login/autenticação** — ver aviso na seção do Supabase acima; hoje qualquer um com a
+  URL do site publicado tem acesso total aos dados via a chave anônima.
 - **Conferência dos avisos do relatório "zerado"** — é um relatório com muitas páginas e
   milhares de itens; boa parte é catálogo antigo/descontinuado. Vale um passo de "marcar
   como descontinuado" em lote para eles pararem de aparecer nos alertas.
@@ -106,8 +123,13 @@ src/
     pdfExtract.js            ← extração de texto de PDF no navegador (pdf.js)
     alertas.js                ← motor de classificação de urgência (puro, sem IA)
     configProdutos.js         ← estoque mínimo / giro / lead time / fornecedor por produto
-    historicoPedidos.js       ← snapshots + pedidos de compra (localStorage por ora)
+    historicoPedidos.js       ← snapshots + pedidos de compra
+    historicoVendas.js        ← meses de vendas importados (Mix de Vendas)
     ordemCompraPdf.js         ← geração do PDF da ordem de compra (pdf-lib)
+    supabaseClient.js         ← cliente Supabase (null se não configurado)
+    sync/
+      push.js                 ← empurra cada escrita local pro Supabase, em segundo plano
+      pull.js                 ← puxa tudo do Supabase no início da sessão, faz merge local
   components/
     ImportarEstoque.jsx
     Dashboard.jsx

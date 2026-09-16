@@ -1,9 +1,13 @@
 // Configurações manuais por produto: estoque mínimo, giro semanal, lead time
 // do fornecedor, fornecedor padrão, e flag de "descontinuado".
-// Guardado em localStorage no modo local. A função salvarConfigProduto()
-// concentra a escrita para facilitar a troca por chamadas Supabase depois.
+// Guardado em localStorage — e, quando o Supabase estiver configurado,
+// também empurrado pra lá em segundo plano (ver src/lib/sync/push.js) e
+// puxado de lá no início da sessão (ver src/lib/sync/pull.js).
 
-const CHAVE = 'ic_supra_config_produtos_v1';
+import { pushConfigProduto, pushRemoverConfigProduto, pushConfigsEmLote } from './sync/push';
+
+export const CHAVE_CONFIG_PRODUTOS = 'ic_supra_config_produtos_v1';
+const CHAVE = CHAVE_CONFIG_PRODUTOS;
 
 function lerTudo() {
   try {
@@ -29,8 +33,9 @@ export function getTodasConfigs() {
 
 export function salvarConfigProduto(codigo, config) {
   const todos = lerTudo();
-  todos[codigo] = { ...todos[codigo], ...config };
+  todos[codigo] = { ...todos[codigo], ...config, atualizadoEm: new Date().toISOString() };
   salvarTudo(todos);
+  pushConfigProduto(codigo, todos[codigo]);
   return todos[codigo];
 }
 
@@ -38,12 +43,15 @@ export function removerConfigProduto(codigo) {
   const todos = lerTudo();
   delete todos[codigo];
   salvarTudo(todos);
+  pushRemoverConfigProduto(codigo);
 }
 
 export function importarConfigsEmLote(mapaCodigoConfig) {
   const todos = lerTudo();
+  const agora = new Date().toISOString();
   for (const [codigo, config] of Object.entries(mapaCodigoConfig)) {
-    todos[codigo] = { ...todos[codigo], ...config };
+    todos[codigo] = { ...todos[codigo], ...config, atualizadoEm: agora };
   }
   salvarTudo(todos);
+  pushConfigsEmLote(mapaCodigoConfig, todos);
 }

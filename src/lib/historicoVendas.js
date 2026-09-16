@@ -2,7 +2,10 @@
 // ("2026-06"). Reimportar o mesmo mês SOBRESCREVE (o chamador deve
 // confirmar com o usuário antes — ver ImportarVendas.jsx), nunca duplica.
 
-const CHAVE = 'ic_supra_vendas_mensais_v1';
+import { pushVendasMes, pushRemoverVendasMes } from './sync/push';
+
+export const CHAVE_VENDAS_MENSAIS = 'ic_supra_vendas_mensais_v1';
+const CHAVE = CHAVE_VENDAS_MENSAIS;
 
 function ler() {
   try {
@@ -48,6 +51,7 @@ export function salvarVendasMes(relatorioParsed, nomeArquivo) {
   };
   todos[chave] = registro;
   salvar(todos);
+  pushVendasMes(registro);
   return registro;
 }
 
@@ -55,6 +59,7 @@ export function removerVendasMes(mesChave) {
   const todos = ler();
   delete todos[mesChave];
   salvar(todos);
+  pushRemoverVendasMes(mesChave);
 }
 
 /**

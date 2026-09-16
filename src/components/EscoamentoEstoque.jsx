@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { listarMesesImportados } from '../lib/historicoVendas';
 import { getTodasConfigs } from '../lib/configProdutos';
 import { inferirSetor } from '../lib/setores';
+import { gerarRelatorioEscoamentoPdf } from '../lib/relatorioEscoamentoPdf';
+import { baixarPdf } from '../lib/ordemCompraPdf';
 
 // Produtos com estoque positivo que não venderam em nenhum dos últimos meses
 // importados do Mix de Vendas — candidatos a promoção/liquidação, porque
@@ -24,6 +26,7 @@ function fmtMoeda(v) {
 
 export default function EscoamentoEstoque({ itensEstoque }) {
   const [limite, setLimite] = useState(50);
+  const [exportando, setExportando] = useState(false);
 
   const mesesRecentes = useMemo(
     () => listarMesesImportados().slice(-QTD_MESES_RECENTES),
@@ -46,6 +49,26 @@ export default function EscoamentoEstoque({ itensEstoque }) {
 
   const valorTotalEscoamento = itensParaEscoamento.reduce((s, i) => s + i.total, 0);
   const listaExibida = itensParaEscoamento.slice(0, limite);
+
+  async function exportarPdf() {
+    setExportando(true);
+    try {
+      const logoResp = await fetch('/logo-ic.png');
+      const logoBytes = new Uint8Array(await logoResp.arrayBuffer());
+      const bytes = await gerarRelatorioEscoamentoPdf({
+        itens: itensParaEscoamento, // lista completa, não só o que está exibido na tela
+        valorTotal: valorTotalEscoamento,
+        mesesConsiderados: mesesRecentes.length,
+        logoBytes,
+      });
+      baixarPdf(bytes, `valor-para-escoamento-ic-supra-${Date.now()}.pdf`);
+    } catch (e) {
+      console.error(e);
+      window.alert('Não foi possível gerar o PDF. Veja o console para detalhes.');
+    } finally {
+      setExportando(false);
+    }
+  }
 
   return (
     <div className="card">
@@ -80,10 +103,13 @@ export default function EscoamentoEstoque({ itensEstoque }) {
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
                 <select value={limite} onChange={(e) => setLimite(Number(e.target.value))}>
                   {OPCOES_QUANTIDADE.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
                 </select>
+                <button className="btn secundario pequeno" disabled={exportando} onClick={exportarPdf}>
+                  {exportando ? 'Gerando PDF…' : `📄 Exportar PDF (${itensParaEscoamento.length})`}
+                </button>
               </div>
               <table>
                 <thead>

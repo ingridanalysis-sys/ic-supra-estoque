@@ -64,10 +64,18 @@ create table if not exists pedidos_compra (
   atualizado_em timestamptz not null default now(),
   criado_por uuid references perfis(id),
   fornecedor text not null,
-  status text not null default 'pendente' check (status in ('pendente', 'parcial', 'recebido')),
+  status text not null default 'pendente' check (status in ('pendente', 'parcial', 'recebido', 'cancelado')),
   observacoes text,
+  motivo_cancelamento text,
   pdf_url text
 );
+
+-- Migração pra quem já rodou uma versão anterior deste script (sem
+-- "cancelado" no status nem a coluna de motivo) — seguro rodar de novo.
+alter table pedidos_compra add column if not exists motivo_cancelamento text;
+alter table pedidos_compra drop constraint if exists pedidos_compra_status_check;
+alter table pedidos_compra add constraint pedidos_compra_status_check
+  check (status in ('pendente', 'parcial', 'recebido', 'cancelado'));
 
 -- Itens de cada pedido de compra
 create table if not exists itens_pedido_compra (

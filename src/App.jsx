@@ -174,7 +174,7 @@ export default function App() {
                 onPedidoCriado={() => setSelecionados({})}
               />
             )}
-            {aba === 'historico' && <HistoricoPedidos />}
+            {aba === 'historico' && <HistoricoPedidos snapshot={snapshot} />}
             {aba === 'mixvendas' && <MixVendas />}
           </main>
         </>

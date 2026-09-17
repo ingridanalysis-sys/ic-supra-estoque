@@ -115,6 +115,7 @@ export async function pushPedidoUpsert(pedido) {
       fornecedor: pedido.fornecedor,
       status: pedido.status,
       observacoes: pedido.observacoes ?? null,
+      motivo_cancelamento: pedido.motivoCancelamento ?? null,
     });
     if (erroCabecalho) throw erroCabecalho;
 

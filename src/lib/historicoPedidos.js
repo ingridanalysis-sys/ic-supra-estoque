@@ -58,10 +58,19 @@ export function getSnapshotAnterior() {
 /**
  * Estrutura de um pedido:
  * {
- *   id, criadoEm, fornecedor, status: 'pendente' | 'parcial' | 'recebido',
+ *   id, criadoEm, fornecedor,
+ *   status: 'pendente' | 'parcial' | 'recebido' | 'cancelado',
+ *   motivoCancelamento: string | null, // só preenchido quando status = 'cancelado'
  *   itens: [{ codigo, descricao, unidade, qtdPedida, qtdRecebida, custoUnit }]
  * }
  */
+
+function recalcularStatus(pedido) {
+  if (pedido.status === 'cancelado') return; // cancelado nunca volta sozinho
+  const totalPedido = pedido.itens.reduce((s, i) => s + i.qtdPedida, 0);
+  const totalRecebido = pedido.itens.reduce((s, i) => s + (i.qtdRecebida ?? 0), 0);
+  pedido.status = totalRecebido === 0 ? 'pendente' : totalRecebido >= totalPedido ? 'recebido' : 'parcial';
+}
 
 export function criarPedido({ fornecedor, itens, observacoes }) {
   const lista = ler(CHAVE_PEDIDOS, []);
@@ -105,9 +114,44 @@ export function registrarRecebimento(id, codigo, qtdRecebidaAdicional) {
   if (item) {
     item.qtdRecebida = (item.qtdRecebida ?? 0) + qtdRecebidaAdicional;
   }
-  const totalPedido = pedido.itens.reduce((s, i) => s + i.qtdPedida, 0);
-  const totalRecebido = pedido.itens.reduce((s, i) => s + (i.qtdRecebida ?? 0), 0);
-  pedido.status = totalRecebido === 0 ? 'pendente' : totalRecebido >= totalPedido ? 'recebido' : 'parcial';
+  recalcularStatus(pedido);
+  pedido.atualizadoEm = new Date().toISOString();
+  salvar(CHAVE_PEDIDOS, lista);
+  pushPedidoUpsert(pedido);
+  return pedido;
+}
+
+/**
+ * Cancela um pedido (o motivo fica registrado e visível no histórico) — não
+ * some da lista, só muda de status. Diferente de "recebido"/"parcial", um
+ * pedido cancelado nunca é recalculado automaticamente por recebimento.
+ */
+export function cancelarPedido(id, motivo) {
+  const lista = ler(CHAVE_PEDIDOS, []);
+  const pedido = lista.find((p) => p.id === id);
+  if (!pedido) return null;
+  pedido.status = 'cancelado';
+  pedido.motivoCancelamento = motivo;
+  pedido.atualizadoEm = new Date().toISOString();
+  salvar(CHAVE_PEDIDOS, lista);
+  pushPedidoUpsert(pedido);
+  return pedido;
+}
+
+/**
+ * Edita um pedido já criado — fornecedor e/ou a lista de itens (permite
+ * corrigir quantidade/custo, remover item, ou adicionar um item que ficou de
+ * fora na hora de montar a ordem original). O status é recalculado a partir
+ * do novo total pedido x já recebido, a não ser que o pedido esteja
+ * cancelado (edição não reabre um pedido cancelado).
+ */
+export function editarPedido(id, { fornecedor, itens }) {
+  const lista = ler(CHAVE_PEDIDOS, []);
+  const pedido = lista.find((p) => p.id === id);
+  if (!pedido) return null;
+  if (fornecedor !== undefined) pedido.fornecedor = fornecedor;
+  if (itens !== undefined) pedido.itens = itens;
+  recalcularStatus(pedido);
   pedido.atualizadoEm = new Date().toISOString();
   salvar(CHAVE_PEDIDOS, lista);
   pushPedidoUpsert(pedido);
@@ -123,7 +167,7 @@ export function getPedidosPendentesPorCodigo(codigo) {
   const lista = ler(CHAVE_PEDIDOS, []);
   let pendente = 0;
   for (const pedido of lista) {
-    if (pedido.status === 'recebido') continue;
+    if (pedido.status === 'recebido' || pedido.status === 'cancelado') continue;
     const item = pedido.itens.find((i) => i.codigo === codigo);
     if (item) {
       pendente += Math.max(0, item.qtdPedida - (item.qtdRecebida ?? 0));
@@ -142,7 +186,7 @@ export function getPedidosPendentesMapa() {
   const lista = ler(CHAVE_PEDIDOS, []);
   const mapa = {};
   for (const pedido of lista) {
-    if (pedido.status === 'recebido') continue;
+    if (pedido.status === 'recebido' || pedido.status === 'cancelado') continue;
     for (const item of pedido.itens) {
       const pendente = Math.max(0, item.qtdPedida - (item.qtdRecebida ?? 0));
       if (pendente > 0) mapa[item.codigo] = (mapa[item.codigo] ?? 0) + pendente;

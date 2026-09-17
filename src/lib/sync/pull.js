@@ -138,6 +138,7 @@ async function puxarPedidos() {
       fornecedor: p.fornecedor,
       status: p.status,
       observacoes: p.observacoes,
+      motivoCancelamento: p.motivo_cancelamento,
       itens: itensPorPedido.get(p.id) ?? [],
     };
     const existente = porId.get(p.id);

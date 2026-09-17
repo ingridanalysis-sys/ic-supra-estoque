@@ -96,13 +96,19 @@ body {
   justify-content: center;
   padding: 24px;
 }
-.login-card {
+.card.login-card {
   width: 100%;
   max-width: 340px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: var(--azul-logo);
+  border-color: var(--azul-logo);
+  color: #fff;
 }
+.login-card h2 { color: #fff; }
+.login-card .subtitulo-pagina { color: rgba(255, 255, 255, 0.75); }
+.login-card .status-arquivo.erro { color: #FCA5A5; }
 .login-logo { height: 40px; width: auto; align-self: center; margin-bottom: 4px; }
 .login-campo {
   display: flex;
@@ -110,9 +116,9 @@ body {
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.85);
 }
-.login-campo input { font-size: 13px; padding: 9px 10px; }
+.login-campo input { font-size: 13px; padding: 9px 10px; background: #fff; color: var(--texto); }
 
 .splash-sync {
   flex: 1;

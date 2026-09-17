@@ -1,8 +1,11 @@
 :root {
-  --azul: #0C3D6E;
+  /* Cor de ação/destaque (botões, aba ativa, títulos) — Electric Indigo,
+     inspirada na referência "Nexus". --azul-logo fica separado de propósito:
+     é a identidade da faixa do topo (cor exata do logo), não muda aqui. */
+  --azul: #4F46FF;
   --azul-logo: #002060; /* azul exato do logo IC SupraHospitalar, usado na faixa principal */
-  --azul-claro: #E6F1FB;
-  --azul-hover: #185FA5;
+  --azul-claro: #EEF0FF;
+  --azul-hover: #4338CA;
   --verde: #1A7A4A;
   --verde-claro: #E8F5EE;
   --cinza: #F5F6F8;
@@ -22,7 +25,7 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #F0F4F8;
   color: var(--texto);
 }
@@ -66,6 +69,50 @@ body {
   background: rgba(255,255,255,0.15);
   white-space: nowrap;
 }
+
+.topbar-usuario {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.topbar-usuario .nome-usuario { opacity: 0.9; white-space: nowrap; }
+.topbar-usuario .btn-sair {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.topbar-usuario .btn-sair:hover { background: rgba(255, 255, 255, 0.15); }
+
+.tela-login {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-logo { height: 40px; width: auto; align-self: center; margin-bottom: 4px; }
+.login-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.login-campo input { font-size: 13px; padding: 9px 10px; }
 
 .splash-sync {
   flex: 1;
@@ -130,9 +177,10 @@ h3 { font-size: 14px; color: var(--azul); margin: 0 0 8px; }
 .card {
   background: #fff;
   border: 1px solid var(--cinza-borda);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 16px 18px;
   margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-grid {
@@ -145,9 +193,10 @@ h3 { font-size: 14px; color: var(--azul); margin: 0 0 8px; }
 .kpi-card {
   background: #fff;
   border: 1px solid var(--cinza-borda);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 14px;
   text-align: center;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-num { font-size: 22px; font-weight: 800; color: var(--azul); }

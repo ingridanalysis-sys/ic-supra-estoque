@@ -125,15 +125,16 @@ create table if not exists alertas_gerados (
 create index if not exists idx_alertas_snapshot on alertas_gerados(snapshot_id);
 create index if not exists idx_alertas_codigo on alertas_gerados(codigo);
 
--- Row Level Security
+-- Row Level Security — agora com login real (Supabase Auth + TelaLogin.jsx).
+-- Time interno de 4 pessoas, todas igualmente confiáveis: a regra é só
+-- "está autenticado ou não", sem checagem por papel/linha por enquanto.
 --
--- TEMPORÁRIO: o app ainda não tem login (a tabela `perfis` acima é só
--- preparação futura). Sem autenticação, a chave anônima do Supabase fica
--- visível no bundle publicado — qualquer policy aqui só decide o que ESSA
--- chave pode fazer, não esconde a chave em si. Por isso as policies abaixo
--- são deliberadamente permissivas (equivalente, na prática, a "sem RLS")
--- até existir login de verdade. Quando `perfis` entrar em uso, troque
--- `using (true)` por uma checagem em `auth.uid()`/`papel`.
+-- Se você já rodou uma versão anterior deste script (fase sem login, com
+-- policies `anon_full_access`), rodar este bloco de novo é seguro: os
+-- `drop policy if exists` abaixo removem as antigas antes de criar as novas.
+-- SÓ rode isso depois que o app com tela de login já estiver publicado e
+-- testado — a partir daqui, acesso sem login para de funcionar.
+alter table perfis enable row level security;
 alter table snapshots_estoque enable row level security;
 alter table itens_estoque enable row level security;
 alter table config_produtos enable row level security;
@@ -143,11 +144,39 @@ alter table alertas_gerados enable row level security;
 alter table vendas_mensais enable row level security;
 alter table itens_venda_mensal enable row level security;
 
-create policy anon_full_access on snapshots_estoque for all to anon using (true) with check (true);
-create policy anon_full_access on itens_estoque for all to anon using (true) with check (true);
-create policy anon_full_access on config_produtos for all to anon using (true) with check (true);
-create policy anon_full_access on pedidos_compra for all to anon using (true) with check (true);
-create policy anon_full_access on itens_pedido_compra for all to anon using (true) with check (true);
-create policy anon_full_access on alertas_gerados for all to anon using (true) with check (true);
-create policy anon_full_access on vendas_mensais for all to anon using (true) with check (true);
-create policy anon_full_access on itens_venda_mensal for all to anon using (true) with check (true);
+-- Postgres não tem "CREATE POLICY IF NOT EXISTS" — por isso todo policy
+-- aqui é DROP (idempotente) + CREATE, pra este bloco poder ser rodado mais
+-- de uma vez sem erro de "já existe".
+drop policy if exists anon_full_access on snapshots_estoque;
+drop policy if exists anon_full_access on itens_estoque;
+drop policy if exists anon_full_access on config_produtos;
+drop policy if exists anon_full_access on pedidos_compra;
+drop policy if exists anon_full_access on itens_pedido_compra;
+drop policy if exists anon_full_access on alertas_gerados;
+drop policy if exists anon_full_access on vendas_mensais;
+drop policy if exists anon_full_access on itens_venda_mensal;
+
+drop policy if exists authenticated_full_access on snapshots_estoque;
+drop policy if exists authenticated_full_access on itens_estoque;
+drop policy if exists authenticated_full_access on config_produtos;
+drop policy if exists authenticated_full_access on pedidos_compra;
+drop policy if exists authenticated_full_access on itens_pedido_compra;
+drop policy if exists authenticated_full_access on alertas_gerados;
+drop policy if exists authenticated_full_access on vendas_mensais;
+drop policy if exists authenticated_full_access on itens_venda_mensal;
+drop policy if exists perfis_leitura_time on perfis;
+
+create policy authenticated_full_access on snapshots_estoque for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on itens_estoque for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on config_produtos for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on pedidos_compra for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on itens_pedido_compra for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on alertas_gerados for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on vendas_mensais for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on itens_venda_mensal for all to authenticated using (true) with check (true);
+
+-- Qualquer autenticado pode ver o nome/papel dos colegas (só informativo,
+-- sem dado sensível) — ninguém escreve em `perfis` pelo app: as 4 linhas
+-- entram manualmente via SQL Editor (que roda como dono do banco e ignora
+-- RLS), depois que as contas forem criadas em Authentication → Users.
+create policy perfis_leitura_time on perfis for select to authenticated using (true);

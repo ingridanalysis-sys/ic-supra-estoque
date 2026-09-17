@@ -76,12 +76,30 @@ o Supabase estiver fora do ar, o app nunca trava, só volta a sincronizar na pr�
 **Sem essas variáveis, nada muda**: o app continua funcionando 100% em modo local
 (localStorage), exatamente como antes.
 
-> **Sem login ainda.** A chave anônima do Supabase (`VITE_SUPABASE_ANON_KEY`) fica visível
-> no site publicado — as policies de RLS no `schema.sql` são propositalmente permissivas
-> (qualquer um com a chave lê/escreve tudo) porque não existe autenticação de usuário no
-> app hoje. Isso é aceitável para uma ferramenta interna com URL não divulgada, mas deve
-> ser revisitado (trocar as policies por checagem de `auth.uid()`) antes de tratar isso
-> como definitivo — a tabela `perfis` no schema já está preparada para esse próximo passo.
+### Login (4 usuários)
+
+O app agora exige login (Supabase Auth, e-mail + senha) sempre que o Supabase estiver
+configurado — em modo local não tem tela de login, porque não há nada pra proteger.
+
+1. **Supabase Dashboard → Authentication → Users → Add user**, uma vez por pessoa
+   (e-mail + senha). Isso é manual, feito direto no painel — o app não tem cadastro.
+2. Depois de criadas, pegue o `id` (UUID) de cada uma na mesma lista de usuários e rode no
+   **SQL Editor**:
+   ```sql
+   insert into perfis (id, nome, papel) values
+     ('uuid-da-pessoa-1', 'Nome da pessoa', 'admin'),
+     ('uuid-da-pessoa-2', 'Nome da pessoa', 'comprador');
+   -- papel: 'admin' | 'comprador' | 'visualizador' (só informativo por enquanto)
+   ```
+3. Rode (ou re-rode) o `schema.sql` inteiro — a seção de Row Level Security foi reescrita
+   pra exigir login (`to authenticated`) em vez da chave anônima; é seguro rodar de novo
+   mesmo que você já tenha rodado uma versão anterior deste arquivo (os `drop policy if
+   exists` cuidam disso).
+4. Faça login no site publicado com uma das contas antes de considerar pronto.
+
+**Antes de existir login**, qualquer um com a chave anônima (visível no bundle publicado)
+lia e escrevia tudo — isso foi fechado nesta versão: as policies agora exigem uma sessão
+autenticada de verdade, não só a chave.
 
 ## Configurando a IA da Análise de Estoque
 
@@ -105,8 +123,9 @@ Custo por análise gerada: menos de um centavo.
 - **Fornecedor por produto** — a Net Use não traz fornecedor no relatório de estoque. Hoje
   você define o fornecedor na hora de montar a ordem de compra (fica salvo e sugerido nas
   próximas vezes). Se você tiver uma lista produto→fornecedor, dá para importar em lote.
-- **Login/autenticação** — ver aviso na seção do Supabase acima; hoje qualquer um com a
-  URL do site publicado tem acesso total aos dados via a chave anônima.
+- **Papéis/permissões por usuário** — `perfis.papel` (admin/comprador/visualizador) hoje é
+  só informativo; todo usuário autenticado tem acesso total aos dados. Diferenciar o que
+  cada papel pode fazer é um próximo passo natural, não implementado ainda.
 - **Conferência dos avisos do relatório "zerado"** — é um relatório com muitas páginas e
   milhares de itens; boa parte é catálogo antigo/descontinuado. Vale um passo de "marcar
   como descontinuado" em lote para eles pararem de aparecer nos alertas.

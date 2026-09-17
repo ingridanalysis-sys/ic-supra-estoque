@@ -6,9 +6,10 @@ import PainelAlertas from './components/PainelAlertas';
 import OrdemCompra from './components/OrdemCompra';
 import HistoricoPedidos from './components/HistoricoPedidos';
 import MixVendas from './components/MixVendas';
+import TelaLogin from './components/TelaLogin';
 import { getUltimoSnapshot } from './lib/historicoPedidos';
 import { gerarPainelAlertas } from './lib/alertas';
-import { isSupabaseConfigured } from './lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { pullTudoDoSupabase } from './lib/sync/pull';
 
 const ABAS = [
@@ -27,20 +28,59 @@ export default function App() {
   // Só existe sincronização quando o Supabase está configurado — sem isso,
   // o app segue 100% em modo local, exatamente como antes.
   const [sincronizando, setSincronizando] = useState(() => isSupabaseConfigured());
+  // undefined = ainda checando a sessão salva; null = deslogado; objeto = logado.
+  const [usuario, setUsuario] = useState(() => (isSupabaseConfigured() ? undefined : null));
+  const [nomeUsuario, setNomeUsuario] = useState(null);
+
+  // Sessão do Supabase Auth — persiste sozinha entre recarregamentos (o
+  // client guarda isso no próprio localStorage, chave separada das
+  // "ic_supra_*"). onAuthStateChange também dispara em refresh de token em
+  // segundo plano, não só login/logout — por isso o efeito de sincronização
+  // abaixo depende de usuario?.id (string), nunca do objeto usuario inteiro.
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    let ativo = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (ativo) setUsuario(data.session?.user ?? null);
+    });
+    const { data: assinatura } = supabase.auth.onAuthStateChange((_evento, session) => {
+      setUsuario(session?.user ?? null);
+    });
+    return () => { ativo = false; assinatura.subscription.unsubscribe(); };
+  }, []);
+
+  // Busca o nome do usuário em `perfis` (cai pro e-mail se a linha ainda não
+  // existir) — só cosmético, nunca bloqueia nada.
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !usuario) { setNomeUsuario(null); return; }
+    let ativo = true;
+    supabase.from('perfis').select('nome').eq('id', usuario.id).maybeSingle()
+      .then(({ data }) => { if (ativo) setNomeUsuario(data?.nome ?? usuario.email); })
+      .catch(() => { if (ativo) setNomeUsuario(usuario.email); });
+    return () => { ativo = false; };
+  }, [usuario?.id]);
 
   // Puxa tudo do Supabase ANTES de liberar a tela — uma escrita local
   // enquanto o pull ainda está em voo poderia ser sobrescrita pela versão
-  // (mais antiga) do servidor. Ver src/lib/sync/pull.js.
+  // (mais antiga) do servidor. Ver src/lib/sync/pull.js. Só roda depois de
+  // confirmar login — sem isso, uma visita não-autenticada dispararia pulls
+  // que as regras do banco agora recusam.
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured() || !usuario) return;
     let cancelado = false;
+    setSincronizando(true); // cobre o caso de logout → login sem recarregar a página
     pullTudoDoSupabase().finally(() => {
       if (cancelado) return;
       setSnapshot(getUltimoSnapshot());
       setSincronizando(false);
     });
     return () => { cancelado = true; };
-  }, []);
+  }, [usuario?.id]);
+
+  function handleLogout() {
+    supabase.auth.signOut();
+    setAba('dashboard');
+  }
 
   const painelAtual = useMemo(() => (snapshot ? gerarPainelAlertas(snapshot.itens) : []), [snapshot]);
   const alertasUrgentes = useMemo(
@@ -71,6 +111,13 @@ export default function App() {
     });
   }
 
+  if (isSupabaseConfigured() && usuario === undefined) {
+    return <div className="splash-sync">Carregando…</div>;
+  }
+  if (isSupabaseConfigured() && usuario === null) {
+    return <TelaLogin />;
+  }
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -78,11 +125,19 @@ export default function App() {
           <img src="/logo-ic-header.png" alt="IC SupraHospitalar" />
           <span className="titulo">Gestão de Estoque</span>
         </div>
-        <span className="badge-modo">
-          {isSupabaseConfigured()
-            ? (sincronizando ? '↻ Sincronizando com Supabase…' : '● Sincronizado com Supabase')
-            : '○ Modo local — sem persistência entre sessões'}
-        </span>
+        <div className="topbar-usuario">
+          {isSupabaseConfigured() && usuario && (
+            <>
+              <span className="nome-usuario">{nomeUsuario ?? usuario.email}</span>
+              <button className="btn-sair" onClick={handleLogout}>Sair</button>
+            </>
+          )}
+          <span className="badge-modo">
+            {isSupabaseConfigured()
+              ? (sincronizando ? '↻ Sincronizando com Supabase…' : '● Sincronizado com Supabase')
+              : '○ Modo local — sem persistência entre sessões'}
+          </span>
+        </div>
       </header>
 
       {sincronizando ? (

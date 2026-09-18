@@ -9,6 +9,7 @@ import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { CHAVE_CONFIG_PRODUTOS } from '../configProdutos';
 import { CHAVE_SNAPSHOTS, CHAVE_PEDIDOS } from '../historicoPedidos';
 import { CHAVE_VENDAS_MENSAIS } from '../historicoVendas';
+import { CHAVE_FORNECEDORES, CHAVE_VINCULOS } from '../fornecedores';
 
 function lerLocal(chave, padrao) {
   try {
@@ -197,6 +198,56 @@ async function puxarVendas() {
   salvarLocal(CHAVE_VENDAS_MENSAIS, local);
 }
 
+async function puxarFornecedores() {
+  const { data, error } = await supabase.from('fornecedores').select('*');
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  const local = lerLocal(CHAVE_FORNECEDORES, []);
+  const porId = new Map(local.map((f) => [f.id, f]));
+  for (const row of data) {
+    const remoto = {
+      id: row.id,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+      envioAutomatico: row.envio_automatico,
+      ativo: row.ativo,
+      criadoEm: row.criado_em,
+      atualizadoEm: row.atualizado_em,
+    };
+    const existente = porId.get(row.id);
+    if (!existente || new Date(remoto.atualizadoEm) > new Date(existente.atualizadoEm ?? 0)) {
+      porId.set(row.id, remoto);
+    }
+  }
+  salvarLocal(CHAVE_FORNECEDORES, Array.from(porId.values()));
+}
+
+async function puxarVinculosProdutoFornecedor() {
+  const { data, error } = await supabase.from('produto_fornecedor').select('*');
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  const local = lerLocal(CHAVE_VINCULOS, []);
+  const porId = new Map(local.map((v) => [v.id, v]));
+  for (const row of data) {
+    const remoto = {
+      id: row.id,
+      codigo: row.codigo,
+      fornecedorId: row.fornecedor_id,
+      custoUnitario: row.custo_unitario != null ? Number(row.custo_unitario) : null,
+      disponivel: row.disponivel,
+      atualizadoEm: row.atualizado_em,
+    };
+    const existente = porId.get(row.id);
+    if (!existente || new Date(remoto.atualizadoEm) > new Date(existente.atualizadoEm ?? 0)) {
+      porId.set(row.id, remoto);
+    }
+  }
+  salvarLocal(CHAVE_VINCULOS, Array.from(porId.values()));
+}
+
 /**
  * Roda uma vez no início da sessão (App.jsx). Não faz nada se o Supabase não
  * estiver configurado. Nunca lança — cada tabela é independente, uma falha
@@ -210,6 +261,8 @@ export async function pullTudoDoSupabase() {
     puxarSnapshots(),
     puxarPedidos(),
     puxarVendas(),
+    puxarFornecedores(),
+    puxarVinculosProdutoFornecedor(),
   ]);
   for (const r of resultados) {
     if (r.status === 'rejected') {

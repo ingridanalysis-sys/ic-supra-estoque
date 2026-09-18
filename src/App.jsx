@@ -6,6 +6,7 @@ import PainelAlertas from './components/PainelAlertas';
 import OrdemCompra from './components/OrdemCompra';
 import HistoricoPedidos from './components/HistoricoPedidos';
 import MixVendas from './components/MixVendas';
+import Fornecedores from './components/Fornecedores';
 import TelaLogin from './components/TelaLogin';
 import { getUltimoSnapshot } from './lib/historicoPedidos';
 import { gerarPainelAlertas } from './lib/alertas';
@@ -19,6 +20,7 @@ const ABAS = [
   { chave: 'ordem', label: 'Ordem de Compra' },
   { chave: 'mixvendas', label: 'Mix de Vendas' },
   { chave: 'historico', label: 'Histórico' },
+  { chave: 'fornecedores', label: 'Fornecedores' },
 ];
 
 export default function App() {
@@ -176,6 +178,7 @@ export default function App() {
             )}
             {aba === 'historico' && <HistoricoPedidos snapshot={snapshot} />}
             {aba === 'mixvendas' && <MixVendas />}
+            {aba === 'fornecedores' && <Fornecedores />}
           </main>
         </>
       )}

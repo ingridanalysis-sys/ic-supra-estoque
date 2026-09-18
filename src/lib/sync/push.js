@@ -182,3 +182,49 @@ export async function pushRemoverVendasMes(mesChave) {
     avisar(`remoção do mês de vendas ${mesChave}`, e);
   }
 }
+
+export async function pushFornecedorUpsert(fornecedor) {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('fornecedores').upsert({
+      id: fornecedor.id,
+      nome: fornecedor.nome,
+      email: fornecedor.email ?? null,
+      telefone: fornecedor.telefone ?? null,
+      envio_automatico: !!fornecedor.envioAutomatico,
+      ativo: fornecedor.ativo !== false,
+      criado_em: fornecedor.criadoEm,
+      atualizado_em: fornecedor.atualizadoEm ?? new Date().toISOString(),
+    });
+    if (error) throw error;
+  } catch (e) {
+    avisar(`fornecedor ${fornecedor.nome}`, e);
+  }
+}
+
+export async function pushVinculoUpsert(vinculo) {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('produto_fornecedor').upsert({
+      id: vinculo.id,
+      codigo: vinculo.codigo,
+      fornecedor_id: vinculo.fornecedorId,
+      custo_unitario: vinculo.custoUnitario ?? null,
+      disponivel: vinculo.disponivel !== false,
+      atualizado_em: vinculo.atualizadoEm ?? new Date().toISOString(),
+    });
+    if (error) throw error;
+  } catch (e) {
+    avisar(`vínculo produto/fornecedor ${vinculo.codigo}`, e);
+  }
+}
+
+export async function pushRemoverVinculo(id) {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('produto_fornecedor').delete().eq('id', id);
+    if (error) throw error;
+  } catch (e) {
+    avisar(`remoção do vínculo produto/fornecedor ${id}`, e);
+  }
+}

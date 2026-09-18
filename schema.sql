@@ -14,6 +14,11 @@ create table if not exists perfis (
   criado_em timestamptz not null default now()
 );
 
+-- Migração: e-mail de contato (independente do login do Supabase Auth) e
+-- flag de quem recebe os alertas periódicos por e-mail (ex: estoque negativo).
+alter table perfis add column if not exists email text;
+alter table perfis add column if not exists recebe_alertas_email boolean not null default false;
+
 -- Um registro por importação de estoque (snapshot)
 create table if not exists snapshots_estoque (
   id uuid primary key default gen_random_uuid(),
@@ -56,6 +61,41 @@ create table if not exists config_produtos (
   descontinuado boolean not null default false,
   atualizado_em timestamptz not null default now()
 );
+
+-- Cadastro de fornecedores — separado de config_produtos porque um mesmo
+-- fornecedor atende vários produtos, e um produto pode ter mais de um
+-- fornecedor (cada um com seu custo e disponibilidade, ver produto_fornecedor
+-- abaixo). `envio_automatico` decide se a Ordem de Compra manda o PDF sozinha
+-- pro e-mail cadastrado deste fornecedor ao ser gerada, ou se cai no
+-- download manual de sempre — ver src/lib/fornecedores.js.
+create table if not exists fornecedores (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null,
+  email text,
+  telefone text,
+  envio_automatico boolean not null default false,
+  ativo boolean not null default true,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+
+-- Vínculo produto↔fornecedor: custo e disponibilidade são por PAR, não por
+-- produto — o mesmo item pode custar diferente e estar disponível em um
+-- fornecedor e indisponível em outro. `disponivel = false` é o que permite a
+-- Ordem de Compra não fechar o pedido inteiro quando um fornecedor específico
+-- não tem aquele item — o item some da conta dele e pode ser resugerido para
+-- outro fornecedor cadastrado, sem travar o resto do pedido.
+create table if not exists produto_fornecedor (
+  id uuid primary key default gen_random_uuid(),
+  codigo text not null,
+  fornecedor_id uuid not null references fornecedores(id) on delete cascade,
+  custo_unitario numeric(12,2),
+  disponivel boolean not null default true,
+  atualizado_em timestamptz not null default now(),
+  unique (codigo, fornecedor_id)
+);
+create index if not exists idx_produto_fornecedor_codigo on produto_fornecedor(codigo);
+create index if not exists idx_produto_fornecedor_fornecedor on produto_fornecedor(fornecedor_id);
 
 -- Pedidos de compra (cabeçalho)
 create table if not exists pedidos_compra (
@@ -151,6 +191,8 @@ alter table itens_pedido_compra enable row level security;
 alter table alertas_gerados enable row level security;
 alter table vendas_mensais enable row level security;
 alter table itens_venda_mensal enable row level security;
+alter table fornecedores enable row level security;
+alter table produto_fornecedor enable row level security;
 
 -- Postgres não tem "CREATE POLICY IF NOT EXISTS" — por isso todo policy
 -- aqui é DROP (idempotente) + CREATE, pra este bloco poder ser rodado mais
@@ -172,6 +214,8 @@ drop policy if exists authenticated_full_access on itens_pedido_compra;
 drop policy if exists authenticated_full_access on alertas_gerados;
 drop policy if exists authenticated_full_access on vendas_mensais;
 drop policy if exists authenticated_full_access on itens_venda_mensal;
+drop policy if exists authenticated_full_access on fornecedores;
+drop policy if exists authenticated_full_access on produto_fornecedor;
 drop policy if exists perfis_leitura_time on perfis;
 
 create policy authenticated_full_access on snapshots_estoque for all to authenticated using (true) with check (true);
@@ -182,6 +226,8 @@ create policy authenticated_full_access on itens_pedido_compra for all to authen
 create policy authenticated_full_access on alertas_gerados for all to authenticated using (true) with check (true);
 create policy authenticated_full_access on vendas_mensais for all to authenticated using (true) with check (true);
 create policy authenticated_full_access on itens_venda_mensal for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on fornecedores for all to authenticated using (true) with check (true);
+create policy authenticated_full_access on produto_fornecedor for all to authenticated using (true) with check (true);
 
 -- Qualquer autenticado pode ver o nome/papel dos colegas (só informativo,
 -- sem dado sensível) — ninguém escreve em `perfis` pelo app: as 4 linhas

@@ -167,27 +167,54 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
 const ORDEM_NIVEL = { NEGATIVO: 0, RUPTURA: 1, CRITICO: 2, ATENCAO: 3, MONITORAR: 4, OK: 5 };
 
 /**
- * Classificação ABC (curva de Pareto) por valor: A = os itens que somam até
- * 80% do valor total, B = até 95%, C = o resto. Prioriza valor de venda (Mix
- * de Vendas já importado) — é o que reflete consumo real; se nenhum mês de
- * vendas foi importado ainda, cai para valor de estoque parado (quantidade x
- * custo) só pra não deixar a classificação vazia.
+ * Classificação ABC (curva de Pareto) por valor, calculada DENTRO DE CADA
+ * SETOR (não no catálogo inteiro) — A = os itens que somam até 80% do valor
+ * do próprio setor, B = até 95%, C = o resto. Uma curva ABC global deixaria
+ * setores de menor faturamento total (ex: Ostomia, Respiratório) quase sem
+ * nenhum item em A, mesmo tendo itens que são o carro-chefe DENTRO daquele
+ * setor — o que não ajuda a priorizar compra por segmento. Prioriza valor
+ * de venda (Mix de Vendas já importado) — é o que reflete consumo real; se
+ * nenhum mês de vendas foi importado ainda, cai para valor de estoque
+ * parado (quantidade x custo) só pra não deixar a classificação vazia.
  */
-function calcularCurvaAbc(itens, resumoVendas) {
+function calcularCurvaAbcPorSetor(itensComSetor, resumoVendas) {
   const usarVendas = Object.keys(resumoVendas).length > 0;
-  const valores = itens.map((item) => ({
-    codigo: item.codigo,
-    valor: usarVendas ? (resumoVendas[item.codigo]?.totVendas ?? 0) : item.quantidade * (item.precoCusto ?? 0),
-  }));
-  const totalValor = valores.reduce((s, v) => s + v.valor, 0);
-  const ordenado = [...valores].sort((a, b) => b.valor - a.valor);
+  const porSetor = new Map();
+  for (const { item, setor } of itensComSetor) {
+    if (!porSetor.has(setor)) porSetor.set(setor, []);
+    porSetor.get(setor).push({
+      codigo: item.codigo,
+      valor: usarVendas ? (resumoVendas[item.codigo]?.totVendas ?? 0) : item.quantidade * (item.precoCusto ?? 0),
+    });
+  }
 
   const mapa = new Map();
-  let acumulado = 0;
-  for (const v of ordenado) {
-    acumulado += v.valor;
-    const pct = totalValor > 0 ? acumulado / totalValor : 1;
-    mapa.set(v.codigo, pct <= 0.8 ? 'A' : pct <= 0.95 ? 'B' : 'C');
+  for (const valores of porSetor.values()) {
+    const totalValor = valores.reduce((s, v) => s + v.valor, 0);
+
+    // Nenhum item do setor tem valor conhecido (sem venda importada pra
+    // nenhum deles, e sem custo/estoque também) — não tem base pra
+    // diferenciar prioridade dentro do setor, então todos ficam em C (o
+    // valor mais baixo de confiança), nunca em A por falta de dados.
+    if (totalValor <= 0) {
+      for (const v of valores) mapa.set(v.codigo, 'C');
+      continue;
+    }
+
+    const ordenado = [...valores].sort((a, b) => b.valor - a.valor);
+    let acumulado = 0;
+    for (const v of ordenado) {
+      // Compara o acumulado ANTES de somar este item — é o que classifica
+      // corretamente o item que sozinho já é a maior parte (ou até 100%) do
+      // valor do setor como 'A': o acumulado antes dele é 0%, então ele
+      // sempre entra em A, mesmo num setor com 1 ou 2 itens só. Comparar
+      // o acumulado DEPOIS (como antes) empurrava esse item pra C só
+      // porque ele mesmo já fecha 100% — o item mais importante do setor
+      // não pode ser classificado como o menos importante.
+      const pctAntes = acumulado / totalValor;
+      acumulado += v.valor;
+      mapa.set(v.codigo, pctAntes < 0.8 ? 'A' : pctAntes < 0.95 ? 'B' : 'C');
+    }
   }
   return { mapa, base: usarVendas ? 'vendas' : 'estoque' };
 }
@@ -196,16 +223,22 @@ export function gerarPainelAlertas(itens) {
   const todasConfigs = getTodasConfigs();
   const pedidosPendentesMapa = getPedidosPendentesMapa();
   const resumoVendas = getResumoVendasPorProduto();
-  const { mapa: curvaAbcMapa, base: baseCurvaAbc } = calcularCurvaAbc(itens, resumoVendas);
   const vinculos = listarVinculos();
   const fornecedoresCadastrados = listarFornecedores();
 
-  const classificados = itens.map((item) => {
+  // Setor precisa estar resolvido ANTES da curva ABC, já que ela agora é
+  // calculada por setor — evita rodar inferirSetor() duas vezes por item.
+  const itensComSetor = itens.map((item) => ({
+    item,
+    setor: todasConfigs[item.codigo]?.setor ?? inferirSetor(item.descricao),
+  }));
+  const { mapa: curvaAbcMapa, base: baseCurvaAbc } = calcularCurvaAbcPorSetor(itensComSetor, resumoVendas);
+
+  const classificados = itensComSetor.map(({ item, setor }) => {
     const config = todasConfigs[item.codigo] ?? null;
     const pendente = pedidosPendentesMapa[item.codigo] ?? 0;
     const vendaRecente = resumoVendas[item.codigo] ?? null;
     const alerta = classificarItem(item, config, pendente, vendaRecente !== null);
-    const setor = config?.setor ?? inferirSetor(item.descricao);
     const precisaFlagGestao = SETORES_FLAG_GESTAO.includes(setor);
 
     const vinculosDoItem = vinculos

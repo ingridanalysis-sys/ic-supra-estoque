@@ -16,7 +16,7 @@ function TagAbc({ classe }) {
     <span
       className="tag"
       style={{ color: COR_CURVA_ABC[classe] ?? 'var(--muted)', background: 'var(--cinza)' }}
-      title="Curva ABC por valor: A = maior impacto (até 80% do valor acumulado), B = até 95%, C = o resto."
+      title="Curva ABC por valor, calculada dentro do próprio setor: A = maior impacto no setor (até 80% do valor acumulado), B = até 95%, C = o resto."
     >
       {classe}
     </span>
@@ -225,26 +225,27 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     return resultado;
   }, [listaFiltrada, limite, busca]);
 
-  // Renderizar milhares de <tr> de uma vez trava o navegador, então a lista
-  // é revelada em blocos — o cálculo acima já é rápido, o gargalo é o DOM.
-  const PAGINA = 200;
-  const [qtdRenderizada, setQtdRenderizada] = useState(PAGINA);
-  useEffect(() => { setQtdRenderizada(PAGINA); }, [filtroNivel, filtroSetor, filtroAbc, busca, limite]);
-  const listaParaRenderizar = useMemo(
-    () => listaComLimitePorSetor.slice(0, qtdRenderizada),
-    [listaComLimitePorSetor, qtdRenderizada]
-  );
-
-  const gruposPorSetor = useMemo(() => {
+  // Agrupa por setor ANTES de paginar — cada setor revela sua própria lista
+  // em blocos, com seu próprio "carregar mais" (ver render abaixo). Assim
+  // todo segmento chega até o fim, qualquer que seja o filtro usado, em vez
+  // de uma paginação única e global que podia esgotar o lote só num setor.
+  const gruposFiltrados = useMemo(() => {
     const mapa = new Map();
-    for (const item of listaParaRenderizar) {
+    for (const item of listaComLimitePorSetor) {
       if (!mapa.has(item.setor)) mapa.set(item.setor, []);
       mapa.get(item.setor).push(item);
     }
     // mantém a ordem já definida em listaFiltrada dentro do setor (urgência
     // ou impacto no faturamento, dependendo da ordenação escolhida)
     return Array.from(mapa.entries());
-  }, [listaParaRenderizar]);
+  }, [listaComLimitePorSetor]);
+
+  // Renderizar milhares de <tr> de uma vez trava o navegador, então cada
+  // setor revela sua lista em blocos — o cálculo acima já é rápido, o
+  // gargalo é o DOM. Estado por setor: { [setor]: quantidade renderizada }.
+  const PAGINA_SETOR = 50;
+  const [renderizadosPorSetor, setRenderizadosPorSetor] = useState({});
+  useEffect(() => { setRenderizadosPorSetor({}); }, [filtroNivel, filtroSetor, filtroAbc, busca, limite]);
 
   // Grupo COMPLETO por setor (não limitado pela paginação de renderização),
   // usado só para a ação em lote "marcar setor como descontinuado" — sem
@@ -360,22 +361,13 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
         />
       </div>
 
-      {gruposPorSetor.length === 0 && <div className="vazio">Nenhum item nesse filtro.</div>}
+      {gruposFiltrados.length === 0 && <div className="vazio">Nenhum item nesse filtro.</div>}
 
-      {listaComLimitePorSetor.length > qtdRenderizada && (
-        <div className="resumo-arquivo" style={{ marginBottom: 10, textAlign: 'left' }}>
-          Mostrando {qtdRenderizada} de {listaComLimitePorSetor.length} itens
-          ({ordenacao === 'FATURAMENTO' ? 'ordenados por impacto no faturamento' : 'ordenados por urgência'}) — use os filtros de
-          setor, nível ou quantidade pra ver menos de uma vez, ou{' '}
-          <button className="btn secundario pequeno" onClick={() => setQtdRenderizada((n) => n + PAGINA)}>
-            carregar mais {Math.min(PAGINA, listaComLimitePorSetor.length - qtdRenderizada)}
-          </button>
-        </div>
-      )}
-
-      {gruposPorSetor.map(([setor, itensDoSetor]) => {
+      {gruposFiltrados.map(([setor, itensDoSetorFiltrados]) => {
         const aberto = !setoresFechados.has(setor);
-        const totalNoSetor = setorCompletoMapa.get(setor)?.length ?? itensDoSetor.length;
+        const totalNoSetor = setorCompletoMapa.get(setor)?.length ?? itensDoSetorFiltrados.length;
+        const qtdRenderizada = renderizadosPorSetor[setor] ?? PAGINA_SETOR;
+        const itensDoSetor = itensDoSetorFiltrados.slice(0, qtdRenderizada);
         const podeDescontinuar = !SETORES_NAO_DESCONTINUAVEIS.includes(setor);
         const precisaFlagGestao = SETORES_FLAG_GESTAO.includes(setor);
         return (
@@ -385,7 +377,9 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
               {setor}
               {precisaFlagGestao && <FlagGestao />}
               <span className="contagem-setor">
-                {totalNoSetor > itensDoSetor.length ? `${itensDoSetor.length} de ${totalNoSetor}` : totalNoSetor} item(ns)
+                {itensDoSetorFiltrados.length > itensDoSetor.length
+                  ? `${itensDoSetor.length} de ${itensDoSetorFiltrados.length}`
+                  : (totalNoSetor > itensDoSetorFiltrados.length ? `${itensDoSetorFiltrados.length} de ${totalNoSetor}` : totalNoSetor)} item(ns)
               </span>
               {podeDescontinuar && (
                 <button
@@ -393,7 +387,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
                   style={{ marginLeft: 12 }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    marcarSetorComoDescontinuado(setor, setorCompletoMapa.get(setor) ?? itensDoSetor);
+                    marcarSetorComoDescontinuado(setor, setorCompletoMapa.get(setor) ?? itensDoSetorFiltrados);
                   }}
                 >
                   Marcar setor como descontinuado
@@ -435,6 +429,17 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
                   ))}
                 </tbody>
               </table>
+              </div>
+            )}
+            {aberto && itensDoSetorFiltrados.length > itensDoSetor.length && (
+              <div className="resumo-arquivo" style={{ textAlign: 'left', padding: '8px 4px 0' }}>
+                Mostrando {itensDoSetor.length} de {itensDoSetorFiltrados.length} itens deste setor —{' '}
+                <button
+                  className="btn secundario pequeno"
+                  onClick={() => setRenderizadosPorSetor((r) => ({ ...r, [setor]: qtdRenderizada + PAGINA_SETOR }))}
+                >
+                  carregar mais {Math.min(PAGINA_SETOR, itensDoSetorFiltrados.length - itensDoSetor.length)}
+                </button>
               </div>
             )}
           </div>

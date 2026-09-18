@@ -255,7 +255,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
   }
 
   function expandirTodos() { setSetoresFechados(new Set()); }
-  function retrairTodos() { setSetoresFechados(new Set(gruposPorSetor.map(([setor]) => setor))); }
+  function retrairTodos() { setSetoresFechados(new Set(gruposFiltrados.map(([setor]) => setor))); }
 
   function marcarSetorComoDescontinuado(setor, itensDoSetor) {
     // Zerado no estoque significa "precisa comprar", nunca "descontinuar" —

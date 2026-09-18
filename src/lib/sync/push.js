@@ -16,6 +16,7 @@ export async function pushConfigProduto(codigo, config) {
     const { error } = await supabase.from('config_produtos').upsert({
       codigo,
       estoque_minimo: config.estoqueMinimo ?? null,
+      estoque_minimo_origem: config.estoqueMinimoOrigem ?? null,
       giro_semanal: config.giroSemanal ?? null,
       giro_origem: config.giroOrigem ?? null,
       lead_time_dias: config.leadTimeDias ?? null,
@@ -45,6 +46,7 @@ export async function pushConfigsEmLote(mapaCodigoConfig, todosResolvidos) {
       return {
         codigo,
         estoque_minimo: config.estoqueMinimo ?? null,
+        estoque_minimo_origem: config.estoqueMinimoOrigem ?? null,
         giro_semanal: config.giroSemanal ?? null,
         giro_origem: config.giroOrigem ?? null,
         lead_time_dias: config.leadTimeDias ?? null,

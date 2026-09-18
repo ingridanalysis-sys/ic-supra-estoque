@@ -73,8 +73,8 @@ function LinhaConfig({ item, onSalvar, onCancelar }) {
     <tr>
       <td colSpan={TOTAL_COLUNAS} style={{ background: 'var(--azul-claro)' }}>
         <div className="linha-flex" style={{ flexWrap: 'wrap', gap: 12, padding: '6px 0' }}>
-          <label style={{ fontSize: 11 }}>
-            Estoque mínimo{' '}
+          <label style={{ fontSize: 11 }} title="🔄 calculado automaticamente a partir do giro de vendas · ✋ ajustado manualmente">
+            Estoque mínimo{cfg.estoqueMinimoOrigem === 'automatico' ? ' 🔄' : cfg.estoqueMinimoOrigem === 'manual' ? ' ✋' : ''}{' '}
             <input type="number" value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} style={{ width: 70 }} />
           </label>
           <label style={{ fontSize: 11 }}>
@@ -100,6 +100,7 @@ function LinhaConfig({ item, onSalvar, onCancelar }) {
             onClick={() => {
               salvarConfigProduto(item.codigo, {
                 estoqueMinimo: estoqueMinimo === '' ? null : Number(estoqueMinimo),
+                estoqueMinimoOrigem: estoqueMinimo === '' ? null : 'manual',
                 giroSemanal: giroSemanal === '' ? null : Number(giroSemanal),
                 giroOrigem: giroSemanal === '' ? null : 'manual',
                 leadTimeDias: leadTimeDias === '' ? null : Number(leadTimeDias),
@@ -166,7 +167,7 @@ function LinhaItem({ item, selecionado, onAlternarSelecao, editando, setEditando
 export default function PainelAlertas({ snapshot, selecionados, onAlternarSelecao, onIrParaOrdem }) {
   const atual = snapshot ?? getUltimoSnapshot();
   const [filtroNivel, setFiltroNivel] = useState('TODOS');
-  const [filtroSetor, setFiltroSetor] = useState([]); // [] = todos os setores; ctrl/cmd+clique no select marca vários
+  const [filtroSetor, setFiltroSetor] = useState([]); // [] = todos os setores; clique em várias pílulas marca vários
   const [filtroAbc, setFiltroAbc] = useState('TODOS');
   const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [limite, setLimite] = useState(0);
@@ -317,31 +318,21 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       </div>
 
       <div className="filtros">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <select
-            multiple
-            value={filtroSetor}
-            onChange={(e) => setFiltroSetor(Array.from(e.target.selectedOptions).map((o) => o.value))}
-            size={Math.min(5, Math.max(2, setoresDisponiveis.length))}
-            style={{ minWidth: 190 }}
-            title="Segure Ctrl (ou Cmd no Mac) e clique pra selecionar mais de um setor."
+        <button className={filtroSetor.length === 0 ? 'active' : ''} onClick={() => setFiltroSetor([])}>
+          Todos os setores
+        </button>
+        {setoresDisponiveis.map((s) => (
+          <button
+            key={s}
+            className={filtroSetor.includes(s) ? 'active' : ''}
+            onClick={() => setFiltroSetor((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]))}
           >
-            {setoresDisponiveis.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <span style={{ fontSize: 10, color: 'var(--muted)' }}>
-            {filtroSetor.length === 0
-              ? 'Nada selecionado = todos os setores. Ctrl+clique pra marcar vários.'
-              : (
-                <>
-                  {filtroSetor.length} setor(es) selecionado(s) —{' '}
-                  <button className="btn secundario pequeno" style={{ fontSize: 10, padding: '1px 6px' }} onClick={() => setFiltroSetor([])}>
-                    limpar
-                  </button>
-                </>
-              )}
-          </span>
-        </div>
+            {s}
+          </button>
+        ))}
+      </div>
 
+      <div className="filtros">
         <select value={filtroAbc} onChange={(e) => setFiltroAbc(e.target.value)}>
           <option value="TODOS">Curva ABC (todas)</option>
           <option value="A">Curva A</option>

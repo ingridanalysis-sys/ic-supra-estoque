@@ -63,3 +63,44 @@ export function aplicarGiroAutomatico() {
   importarConfigsEmLote(lote);
   return { atualizados, ignoradosManual, mesesConsiderados };
 }
+
+/**
+ * Estoque mínimo automático = estoque de segurança do próprio ponto de
+ * pedido já usado no motor de alertas (src/lib/alertas.js):
+ *
+ *   pontoPedido   = giroDiario × (leadTimeDias + margemSegurancaDias)
+ *   estoqueMinimo = giroDiario × margemSegurancaDias
+ *
+ * ou seja, o mínimo é exatamente a parcela de "margem de segurança" dentro
+ * do ponto de pedido — não é um número novo inventado, é a mesma fórmula já
+ * validada, só isolando o termo de segurança. Isso é o que garante que os
+ * dois números (mínimo e ponto de pedido) sempre fazem sentido juntos.
+ *
+ * Só calcula pra produto que já tem giro conhecido (automático ou manual —
+ * ver calcularGiroSemanalPorProduto) E cujo mínimo não foi ajustado à mão
+ * (estoqueMinimoOrigem !== 'manual'), pelo mesmo motivo do giro: uma nova
+ * importação de vendas não pode apagar um ajuste fino que o usuário fez.
+ * Produto sem nenhuma venda importada não entra aqui — não tem base real
+ * pra calcular, e um número inventado seria pior que deixar em branco.
+ */
+export function aplicarMinimoAutomatico() {
+  const configsAtuais = getTodasConfigs();
+  const lote = {};
+  let atualizados = 0;
+  let ignoradosManual = 0;
+  let semGiro = 0;
+
+  for (const [codigo, cfg] of Object.entries(configsAtuais)) {
+    const giroSemanal = cfg?.giroSemanal;
+    if (!giroSemanal || giroSemanal <= 0) { semGiro += 1; continue; }
+    if (cfg?.estoqueMinimoOrigem === 'manual') { ignoradosManual += 1; continue; }
+
+    const margemSegurancaDias = cfg?.margemSegurancaDias ?? 3;
+    const estoqueMinimo = Math.ceil((giroSemanal / 7) * margemSegurancaDias);
+    lote[codigo] = { estoqueMinimo, estoqueMinimoOrigem: 'automatico' };
+    atualizados += 1;
+  }
+
+  importarConfigsEmLote(lote);
+  return { atualizados, ignoradosManual, semGiro };
+}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { listarMesesImportados } from '../lib/historicoVendas';
 import { getTodasConfigs } from '../lib/configProdutos';
 import { inferirSetor } from '../lib/setores';
+import { aplicarGiroAutomatico, aplicarMinimoAutomatico } from '../lib/giroAutomatico';
 import ImportarVendas from './ImportarVendas';
 
 function fmtMoeda(v) {
@@ -111,6 +112,19 @@ export default function MixVendas() {
     });
   }
 
+  function handleRecalcular() {
+    const giro = aplicarGiroAutomatico();
+    const minimo = aplicarMinimoAutomatico();
+    setVersao((v) => v + 1);
+    window.alert(
+      `Giro semanal recalculado para ${giro.atualizados} produto(s)` +
+      (giro.ignoradosManual > 0 ? ` (${giro.ignoradosManual} mantiveram ajuste manual)` : '') +
+      `.\nEstoque mínimo e ponto de pedido recalculados para ${minimo.atualizados} produto(s)` +
+      (minimo.ignoradosManual > 0 ? ` (${minimo.ignoradosManual} mantiveram ajuste manual)` : '') +
+      (minimo.semGiro > 0 ? `.\n${minimo.semGiro} produto(s) sem giro conhecido continuam sem mínimo automático (sem venda registrada ainda pra calcular).` : '.')
+    );
+  }
+
   return (
     <div>
       <h2>Mix de Vendas</h2>
@@ -120,6 +134,17 @@ export default function MixVendas() {
       </p>
 
       <ImportarVendas onGiroAtualizado={() => setVersao((v) => v + 1)} />
+
+      {meses.length > 0 && (
+        <div style={{ margin: '10px 0 16px' }}>
+          <button className="btn secundario pequeno" onClick={handleRecalcular}>
+            🔄 Recalcular giro, mínimo e ponto de pedido de todo o catálogo agora
+          </button>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>
+            Útil pra aplicar retroativamente aos meses já importados antes dessa conta existir — não precisa reimportar nenhum PDF.
+          </p>
+        </div>
+      )}
 
       {meses.length === 0 ? (
         <div className="vazio">Nenhum mês de vendas importado ainda — use o card acima.</div>

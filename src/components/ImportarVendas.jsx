@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { extrairTextoPdf } from '../lib/pdfExtract';
 import { parseRelatorioVendas } from '../lib/parsers/vendasParser';
 import { salvarVendasMes, listarMesesImportados, removerVendasMes, mesJaImportado } from '../lib/historicoVendas';
-import { aplicarGiroAutomatico } from '../lib/giroAutomatico';
+import { aplicarGiroAutomatico, aplicarMinimoAutomatico } from '../lib/giroAutomatico';
 
 function fmtMoeda(v) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -37,13 +37,17 @@ export default function ImportarVendas({ onGiroAtualizado }) {
 
       salvarVendasMes(relatorio, file.name);
       const resultadoGiro = aplicarGiroAutomatico();
+      const resultadoMinimo = aplicarMinimoAutomatico();
       setMeses(listarMesesImportados());
       onGiroAtualizado?.(resultadoGiro);
 
       setMensagem(
         `${relatorio.mesLabel} importado: ${relatorio.itens.length} produtos vendidos, ${fmtMoeda(relatorio.resumo.totalVendas)}. ` +
         `Giro semanal recalculado para ${resultadoGiro.atualizados} produto(s)` +
-        (resultadoGiro.ignoradosManual > 0 ? ` (${resultadoGiro.ignoradosManual} mantiveram ajuste manual).` : '.')
+        (resultadoGiro.ignoradosManual > 0 ? ` (${resultadoGiro.ignoradosManual} mantiveram ajuste manual)` : '') +
+        `. Estoque mínimo e ponto de pedido recalculados para ${resultadoMinimo.atualizados} produto(s)` +
+        (resultadoMinimo.ignoradosManual > 0 ? ` (${resultadoMinimo.ignoradosManual} mantiveram ajuste manual)` : '') +
+        '.'
       );
     } catch (e) {
       console.error(e);

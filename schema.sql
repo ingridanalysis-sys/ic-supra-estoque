@@ -52,6 +52,7 @@ create index if not exists idx_itens_estoque_codigo on itens_estoque(codigo);
 create table if not exists config_produtos (
   codigo text primary key,
   estoque_minimo numeric(12,2),
+  estoque_minimo_origem text check (estoque_minimo_origem in ('automatico', 'manual')),
   giro_semanal numeric(12,2),
   giro_origem text check (giro_origem in ('automatico', 'manual')),
   lead_time_dias integer,
@@ -61,6 +62,13 @@ create table if not exists config_produtos (
   descontinuado boolean not null default false,
   atualizado_em timestamptz not null default now()
 );
+
+-- Migração pra quem já rodou uma versão anterior deste script (sem a
+-- coluna de origem do estoque mínimo) — seguro rodar de novo.
+alter table config_produtos add column if not exists estoque_minimo_origem text;
+alter table config_produtos drop constraint if exists config_produtos_estoque_minimo_origem_check;
+alter table config_produtos add constraint config_produtos_estoque_minimo_origem_check
+  check (estoque_minimo_origem in ('automatico', 'manual'));
 
 -- Cadastro de fornecedores — separado de config_produtos porque um mesmo
 -- fornecedor atende vários produtos, e um produto pode ter mais de um

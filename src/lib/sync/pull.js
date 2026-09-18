@@ -32,6 +32,7 @@ async function puxarConfigProdutos() {
   for (const row of data ?? []) {
     const remoto = {
       estoqueMinimo: row.estoque_minimo,
+      estoqueMinimoOrigem: row.estoque_minimo_origem,
       giroSemanal: row.giro_semanal,
       giroOrigem: row.giro_origem,
       leadTimeDias: row.lead_time_dias,

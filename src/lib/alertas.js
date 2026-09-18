@@ -54,6 +54,22 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
     ? (giroSemanal / 7) * (leadTimeDias + margemSegurancaDias)
     : null;
 
+  // Quantidade sugerida pra compra: sobe o estoque até um "nível-alvo" que
+  // cobre DOIS ciclos completos de reposição (2x o ponto de pedido, ou 2x o
+  // mínimo cadastrado — o maior dos dois), calculado a partir do giro real
+  // de vendas (giroAutomatico.js, alimentado pelo Mix de Vendas importado) —
+  // é assim que a incidência no faturamento dos meses anteriores entra na
+  // conta. Sem giro nem mínimo cadastrados ainda pra esse produto, cai num
+  // ponto de partida pelo ticket: item caro sugere só 1 unidade, item barato
+  // sugere um lote maior — nunca "1" fixo pra tudo.
+  const LIMIAR_TICKET_ALTO = 50; // R$ — acima disso conta como "ticket alto"
+  let nivelAlvoEstoque = null;
+  if (pontoPedido != null) nivelAlvoEstoque = pontoPedido * 2;
+  if (estoqueMinimo != null) nivelAlvoEstoque = Math.max(nivelAlvoEstoque ?? 0, estoqueMinimo * 2);
+  const quantidadeSugerida = nivelAlvoEstoque != null
+    ? Math.max(0, Math.ceil(nivelAlvoEstoque - saldoConsiderandoPedidos))
+    : ((item.precoCusto ?? 0) > LIMIAR_TICKET_ALTO ? 1 : 5);
+
   if (item.quantidade < 0) {
     return {
       nivel: 'NEGATIVO',
@@ -61,6 +77,9 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura: null,
       saldoConsiderandoPedidos,
       pontoPedido,
+      // Aqui não é uma sugestão de compra normal — é o quanto zeraria a
+      // divergência de contagem. O comprador deve conferir antes de repor.
+      quantidadeSugerida: Math.abs(item.quantidade),
     };
   }
 
@@ -69,7 +88,7 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
     : Object.prototype.hasOwnProperty.call(getResumoVendasPorProduto(), item.codigo);
 
   if (cfg?.descontinuado && !vendeu) {
-    return { nivel: 'OK', motivo: 'Produto marcado como descontinuado — ignorado nos alertas.', diasCobertura: null, saldoConsiderandoPedidos, pontoPedido };
+    return { nivel: 'OK', motivo: 'Produto marcado como descontinuado — ignorado nos alertas.', diasCobertura: null, saldoConsiderandoPedidos, pontoPedido, quantidadeSugerida: 0 };
   }
 
   let diasCobertura = null;
@@ -86,6 +105,7 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura,
       saldoConsiderandoPedidos,
       pontoPedido,
+      quantidadeSugerida,
     };
   }
 
@@ -96,6 +116,7 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura,
       saldoConsiderandoPedidos,
       pontoPedido,
+      quantidadeSugerida,
     };
   }
 
@@ -106,6 +127,7 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura,
       saldoConsiderandoPedidos,
       pontoPedido,
+      quantidadeSugerida,
     };
   }
 
@@ -116,6 +138,7 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura,
       saldoConsiderandoPedidos,
       pontoPedido,
+      quantidadeSugerida,
     };
   }
 
@@ -126,10 +149,11 @@ export function classificarItem(item, config = undefined, pendente = undefined, 
       diasCobertura,
       saldoConsiderandoPedidos,
       pontoPedido,
+      quantidadeSugerida,
     };
   }
 
-  return { nivel: 'OK', motivo: 'Estoque em nível confortável.', diasCobertura, saldoConsiderandoPedidos, pontoPedido };
+  return { nivel: 'OK', motivo: 'Estoque em nível confortável.', diasCobertura, saldoConsiderandoPedidos, pontoPedido, quantidadeSugerida };
 }
 
 /**

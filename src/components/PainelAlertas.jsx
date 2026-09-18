@@ -52,11 +52,11 @@ const FILTROS_NIVEL = [
 
 const OPCOES_QUANTIDADE = [
   { valor: 0, label: 'Todos' },
-  { valor: 5, label: 'Top 5' },
-  { valor: 10, label: 'Top 10' },
-  { valor: 15, label: 'Top 15' },
-  { valor: 20, label: 'Top 20' },
-  { valor: 50, label: 'Top 50' },
+  { valor: 5, label: 'Top 5 por setor' },
+  { valor: 10, label: 'Top 10 por setor' },
+  { valor: 15, label: 'Top 15 por setor' },
+  { valor: 20, label: 'Top 20 por setor' },
+  { valor: 50, label: 'Top 50 por setor' },
 ];
 
 const TOTAL_COLUNAS = 15;
@@ -166,7 +166,7 @@ function LinhaItem({ item, selecionado, onAlternarSelecao, editando, setEditando
 export default function PainelAlertas({ snapshot, selecionados, onAlternarSelecao, onIrParaOrdem }) {
   const atual = snapshot ?? getUltimoSnapshot();
   const [filtroNivel, setFiltroNivel] = useState('TODOS');
-  const [filtroSetor, setFiltroSetor] = useState('TODOS');
+  const [filtroSetor, setFiltroSetor] = useState([]); // [] = todos os setores; ctrl/cmd+clique no select marca vários
   const [filtroAbc, setFiltroAbc] = useState('TODOS');
   const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [limite, setLimite] = useState(0);
@@ -195,7 +195,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     let lista = painel;
     if (filtroNivel !== 'TODOS') lista = lista.filter((i) => i.alerta.nivel === filtroNivel);
     else lista = lista.filter((i) => i.alerta.nivel !== 'OK'); // "Todos" = tudo que precisa de atenção
-    if (filtroSetor !== 'TODOS') lista = lista.filter((i) => i.setor === filtroSetor);
+    if (filtroSetor.length > 0) lista = lista.filter((i) => filtroSetor.includes(i.setor));
     if (filtroAbc !== 'TODOS') lista = lista.filter((i) => i.curvaAbc === filtroAbc);
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
@@ -204,9 +204,25 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     if (ordenacao === 'FATURAMENTO') {
       lista = [...lista].sort((a, b) => (b.vendaRecente?.totVendas ?? 0) - (a.vendaRecente?.totVendas ?? 0));
     }
-    if (limite > 0) lista = lista.slice(0, limite);
     return lista;
-  }, [painel, filtroNivel, filtroSetor, filtroAbc, busca, limite, ordenacao]);
+  }, [painel, filtroNivel, filtroSetor, filtroAbc, busca, ordenacao]);
+
+  // "Top N" é POR setor, não no total somado — filtrar por 30, por exemplo,
+  // dá até 30 itens em CADA setor presente no resultado, não 30 no geral.
+  // Só se aplica sem busca ativa: buscando um termo (ex. "venosan"), o
+  // interessante é ver TODOS os resultados daquele termo, sem corte por
+  // setor — a paginação abaixo ("carregar mais") já cobre listas grandes.
+  const listaComLimitePorSetor = useMemo(() => {
+    if (limite <= 0 || busca.trim()) return listaFiltrada;
+    const porSetor = new Map();
+    for (const item of listaFiltrada) {
+      if (!porSetor.has(item.setor)) porSetor.set(item.setor, []);
+      porSetor.get(item.setor).push(item);
+    }
+    const resultado = [];
+    for (const itensDoSetor of porSetor.values()) resultado.push(...itensDoSetor.slice(0, limite));
+    return resultado;
+  }, [listaFiltrada, limite, busca]);
 
   // Renderizar milhares de <tr> de uma vez trava o navegador, então a lista
   // é revelada em blocos — o cálculo acima já é rápido, o gargalo é o DOM.
@@ -214,8 +230,8 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
   const [qtdRenderizada, setQtdRenderizada] = useState(PAGINA);
   useEffect(() => { setQtdRenderizada(PAGINA); }, [filtroNivel, filtroSetor, filtroAbc, busca, limite]);
   const listaParaRenderizar = useMemo(
-    () => listaFiltrada.slice(0, qtdRenderizada),
-    [listaFiltrada, qtdRenderizada]
+    () => listaComLimitePorSetor.slice(0, qtdRenderizada),
+    [listaComLimitePorSetor, qtdRenderizada]
   );
 
   const gruposPorSetor = useMemo(() => {
@@ -301,10 +317,30 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       </div>
 
       <div className="filtros">
-        <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)}>
-          <option value="TODOS">Todos os setores</option>
-          {setoresDisponiveis.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <select
+            multiple
+            value={filtroSetor}
+            onChange={(e) => setFiltroSetor(Array.from(e.target.selectedOptions).map((o) => o.value))}
+            size={Math.min(5, Math.max(2, setoresDisponiveis.length))}
+            style={{ minWidth: 190 }}
+            title="Segure Ctrl (ou Cmd no Mac) e clique pra selecionar mais de um setor."
+          >
+            {setoresDisponiveis.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+            {filtroSetor.length === 0
+              ? 'Nada selecionado = todos os setores. Ctrl+clique pra marcar vários.'
+              : (
+                <>
+                  {filtroSetor.length} setor(es) selecionado(s) —{' '}
+                  <button className="btn secundario pequeno" style={{ fontSize: 10, padding: '1px 6px' }} onClick={() => setFiltroSetor([])}>
+                    limpar
+                  </button>
+                </>
+              )}
+          </span>
+        </div>
 
         <select value={filtroAbc} onChange={(e) => setFiltroAbc(e.target.value)}>
           <option value="TODOS">Curva ABC (todas)</option>
@@ -335,13 +371,13 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
 
       {gruposPorSetor.length === 0 && <div className="vazio">Nenhum item nesse filtro.</div>}
 
-      {listaFiltrada.length > qtdRenderizada && (
+      {listaComLimitePorSetor.length > qtdRenderizada && (
         <div className="resumo-arquivo" style={{ marginBottom: 10, textAlign: 'left' }}>
-          Mostrando {qtdRenderizada} de {listaFiltrada.length} itens
+          Mostrando {qtdRenderizada} de {listaComLimitePorSetor.length} itens
           ({ordenacao === 'FATURAMENTO' ? 'ordenados por impacto no faturamento' : 'ordenados por urgência'}) — use os filtros de
           setor, nível ou quantidade pra ver menos de uma vez, ou{' '}
           <button className="btn secundario pequeno" onClick={() => setQtdRenderizada((n) => n + PAGINA)}>
-            carregar mais {Math.min(PAGINA, listaFiltrada.length - qtdRenderizada)}
+            carregar mais {Math.min(PAGINA, listaComLimitePorSetor.length - qtdRenderizada)}
           </button>
         </div>
       )}

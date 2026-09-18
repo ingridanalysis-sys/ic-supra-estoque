@@ -25,7 +25,7 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
       const cfg = getConfigProduto(item.codigo);
       const melhor = opcoesFornecedor(item.codigo, vinculos, fornecedores)[0];
       iniciais[item.codigo] = {
-        qtd: sugerirQuantidade(item),
+        qtd: item.alerta?.quantidadeSugerida ?? 1,
         fornecedorId: melhor?.fornecedor.id ?? null,
         fornecedorTexto: melhor ? '' : (cfg?.fornecedor ?? ''),
         custoUnit: melhor ? (melhor.vinculo.custoUnitario ?? item.precoCusto ?? 0) : (item.precoCusto ?? 0),
@@ -35,12 +35,6 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
   });
   const [gerando, setGerando] = useState(false);
   const [observacoes, setObservacoes] = useState('');
-
-  function sugerirQuantidade(item) {
-    if (item.alerta?.nivel === 'NEGATIVO') return Math.abs(item.quantidade);
-    if (item.alerta?.diasCobertura != null && item.alerta.diasCobertura < 0) return 1;
-    return 1; // ponto de partida — o usuário ajusta
-  }
 
   function atualizarCampo(codigo, campo, valor) {
     setCampos((c) => ({ ...c, [codigo]: { ...c[codigo], [campo]: valor } }));

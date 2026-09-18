@@ -9,6 +9,20 @@ function fmtMoeda(v) {
   return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const COR_CURVA_ABC = { A: 'var(--vermelho)', B: 'var(--amarelo)', C: 'var(--muted)' };
+
+function TagAbc({ classe }) {
+  return (
+    <span
+      className="tag"
+      style={{ color: COR_CURVA_ABC[classe] ?? 'var(--muted)', background: 'var(--cinza)' }}
+      title="Curva ABC por valor: A = maior impacto (até 80% do valor acumulado), B = até 95%, C = o resto."
+    >
+      {classe}
+    </span>
+  );
+}
+
 const ORDENACOES = [
   { chave: 'URGENCIA', label: 'Ordenar por urgência' },
   { chave: 'FATURAMENTO', label: 'Ordenar por impacto no faturamento' },
@@ -45,6 +59,8 @@ const OPCOES_QUANTIDADE = [
   { valor: 50, label: 'Top 50' },
 ];
 
+const TOTAL_COLUNAS = 15;
+
 function LinhaConfig({ item, onSalvar, onCancelar }) {
   const cfg = getConfigProduto(item.codigo) ?? {};
   const [estoqueMinimo, setEstoqueMinimo] = useState(cfg.estoqueMinimo ?? '');
@@ -55,7 +71,7 @@ function LinhaConfig({ item, onSalvar, onCancelar }) {
 
   return (
     <tr>
-      <td colSpan={11} style={{ background: 'var(--azul-claro)' }}>
+      <td colSpan={TOTAL_COLUNAS} style={{ background: 'var(--azul-claro)' }}>
         <div className="linha-flex" style={{ flexWrap: 'wrap', gap: 12, padding: '6px 0' }}>
           <label style={{ fontSize: 11 }}>
             Estoque mínimo{' '}
@@ -70,7 +86,7 @@ function LinhaConfig({ item, onSalvar, onCancelar }) {
             <input type="number" value={leadTimeDias} onChange={(e) => setLeadTimeDias(e.target.value)} style={{ width: 70 }} />
           </label>
           <label style={{ fontSize: 11 }}>
-            Fornecedor{' '}
+            Fornecedor (texto livre — cadastro completo com custo fica na aba Fornecedores){' '}
             <input type="text" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} style={{ width: 140 }} />
           </label>
           <label style={{ fontSize: 11 }}>
@@ -117,14 +133,18 @@ function LinhaItem({ item, selecionado, onAlternarSelecao, editando, setEditando
         <td>{item.descricao}</td>
         <td>{item.unidade || '-'}</td>
         <td>{item.quantidade}</td>
+        <td>{item.estoqueMinimo ?? '—'}</td>
+        <td>{item.alerta.pontoPedido != null ? Math.ceil(item.alerta.pontoPedido) : '—'}</td>
         <td>{item.alerta.diasCobertura != null ? item.alerta.diasCobertura.toFixed(1) : '—'}</td>
         <td style={{ whiteSpace: 'nowrap' }}>
           {item.vendaRecente
             ? <span title={`${item.vendaRecente.qtdeVolumes.toLocaleString('pt-BR')} un. vendidas nos meses importados`}>{fmtMoeda(item.vendaRecente.totVendas)}</span>
             : <span style={{ color: 'var(--muted)' }}>—</span>}
         </td>
+        <td><TagAbc classe={item.curvaAbc} /></td>
         <td><TagAlerta nivel={item.alerta.nivel} /></td>
         <td style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 220 }}>{item.alerta.motivo}</td>
+        <td style={{ fontSize: 11 }}>{item.fornecedor ?? <span style={{ color: 'var(--muted)' }}>—</span>}</td>
         <td>{item.precisaFlagGestao && <FlagGestao />}</td>
         <td>
           <button className="btn secundario pequeno" onClick={() => setEditando(editando === item.codigo ? null : item.codigo)}>
@@ -147,6 +167,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
   const atual = snapshot ?? getUltimoSnapshot();
   const [filtroNivel, setFiltroNivel] = useState('TODOS');
   const [filtroSetor, setFiltroSetor] = useState('TODOS');
+  const [filtroAbc, setFiltroAbc] = useState('TODOS');
   const [ordenacao, setOrdenacao] = useState('URGENCIA');
   const [limite, setLimite] = useState(0);
   const [busca, setBusca] = useState('');
@@ -175,6 +196,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     if (filtroNivel !== 'TODOS') lista = lista.filter((i) => i.alerta.nivel === filtroNivel);
     else lista = lista.filter((i) => i.alerta.nivel !== 'OK'); // "Todos" = tudo que precisa de atenção
     if (filtroSetor !== 'TODOS') lista = lista.filter((i) => i.setor === filtroSetor);
+    if (filtroAbc !== 'TODOS') lista = lista.filter((i) => i.curvaAbc === filtroAbc);
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
       lista = lista.filter((i) => i.descricao.toLowerCase().includes(b) || i.codigo.includes(b));
@@ -184,13 +206,13 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     }
     if (limite > 0) lista = lista.slice(0, limite);
     return lista;
-  }, [painel, filtroNivel, filtroSetor, busca, limite, ordenacao]);
+  }, [painel, filtroNivel, filtroSetor, filtroAbc, busca, limite, ordenacao]);
 
   // Renderizar milhares de <tr> de uma vez trava o navegador, então a lista
   // é revelada em blocos — o cálculo acima já é rápido, o gargalo é o DOM.
   const PAGINA = 200;
   const [qtdRenderizada, setQtdRenderizada] = useState(PAGINA);
-  useEffect(() => { setQtdRenderizada(PAGINA); }, [filtroNivel, filtroSetor, busca, limite]);
+  useEffect(() => { setQtdRenderizada(PAGINA); }, [filtroNivel, filtroSetor, filtroAbc, busca, limite]);
   const listaParaRenderizar = useMemo(
     () => listaFiltrada.slice(0, qtdRenderizada),
     [listaFiltrada, qtdRenderizada]
@@ -284,6 +306,13 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
           {setoresDisponiveis.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
 
+        <select value={filtroAbc} onChange={(e) => setFiltroAbc(e.target.value)}>
+          <option value="TODOS">Curva ABC (todas)</option>
+          <option value="A">Curva A</option>
+          <option value="B">Curva B</option>
+          <option value="C">Curva C</option>
+        </select>
+
         <select value={limite} onChange={(e) => setLimite(Number(e.target.value))}>
           {OPCOES_QUANTIDADE.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
         </select>
@@ -345,6 +374,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
               )}
             </div>
             {aberto && (
+              <div className="tabela-scroll">
               <table>
                 <thead>
                   <tr>
@@ -353,10 +383,14 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
                     <th>Descrição</th>
                     <th>Un.</th>
                     <th>Estoque</th>
+                    <th>Mínimo</th>
+                    <th>Ponto de pedido</th>
                     <th>Cobertura (dias)</th>
                     <th>Faturamento recente</th>
+                    <th>ABC</th>
                     <th>Nível</th>
                     <th>Motivo</th>
+                    <th>Fornecedor</th>
                     <th></th>
                     <th></th>
                   </tr>
@@ -374,6 +408,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         );

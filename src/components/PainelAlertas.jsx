@@ -208,37 +208,23 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
     return lista;
   }, [painel, filtroNivel, filtroSetor, filtroAbc, busca, ordenacao]);
 
-  // "Top N" é POR setor, não no total somado — filtrar por 30, por exemplo,
-  // dá até 30 itens em CADA setor presente no resultado, não 30 no geral.
-  // Só se aplica sem busca ativa: buscando um termo (ex. "venosan"), o
-  // interessante é ver TODOS os resultados daquele termo, sem corte por
-  // setor — a paginação abaixo ("carregar mais") já cobre listas grandes.
-  const listaComLimitePorSetor = useMemo(() => {
-    if (limite <= 0 || busca.trim()) return listaFiltrada;
-    const porSetor = new Map();
-    for (const item of listaFiltrada) {
-      if (!porSetor.has(item.setor)) porSetor.set(item.setor, []);
-      porSetor.get(item.setor).push(item);
-    }
-    const resultado = [];
-    for (const itensDoSetor of porSetor.values()) resultado.push(...itensDoSetor.slice(0, limite));
-    return resultado;
-  }, [listaFiltrada, limite, busca]);
-
   // Agrupa por setor ANTES de paginar — cada setor revela sua própria lista
   // em blocos, com seu próprio "carregar mais" (ver render abaixo). Assim
-  // todo segmento chega até o fim, qualquer que seja o filtro usado, em vez
-  // de uma paginação única e global que podia esgotar o lote só num setor.
+  // todo segmento chega até o fim, qualquer que seja o filtro usado — "Top
+  // N por setor" não é mais um corte definitivo e sem volta, é só QUANTOS
+  // itens aparecem de cada setor antes de precisar clicar em carregar mais
+  // (ver PAGINA_SETOR abaixo). Sem isso, quem usasse Top 50 nunca conseguia
+  // ver o item 51 em diante de um setor com centenas de itens.
   const gruposFiltrados = useMemo(() => {
     const mapa = new Map();
-    for (const item of listaComLimitePorSetor) {
+    for (const item of listaFiltrada) {
       if (!mapa.has(item.setor)) mapa.set(item.setor, []);
       mapa.get(item.setor).push(item);
     }
     // mantém a ordem já definida em listaFiltrada dentro do setor (urgência
     // ou impacto no faturamento, dependendo da ordenação escolhida)
     return Array.from(mapa.entries());
-  }, [listaComLimitePorSetor]);
+  }, [listaFiltrada]);
 
   // Renderizar milhares de <tr> de uma vez trava o navegador, então cada
   // setor revela sua lista em blocos — o cálculo acima já é rápido, o
@@ -366,7 +352,7 @@ export default function PainelAlertas({ snapshot, selecionados, onAlternarSeleca
       {gruposFiltrados.map(([setor, itensDoSetorFiltrados]) => {
         const aberto = !setoresFechados.has(setor);
         const totalNoSetor = setorCompletoMapa.get(setor)?.length ?? itensDoSetorFiltrados.length;
-        const qtdRenderizada = renderizadosPorSetor[setor] ?? PAGINA_SETOR;
+        const qtdRenderizada = renderizadosPorSetor[setor] ?? (limite > 0 ? limite : PAGINA_SETOR);
         const itensDoSetor = itensDoSetorFiltrados.slice(0, qtdRenderizada);
         const podeDescontinuar = !SETORES_NAO_DESCONTINUAVEIS.includes(setor);
         const precisaFlagGestao = SETORES_FLAG_GESTAO.includes(setor);

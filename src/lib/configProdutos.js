@@ -5,6 +5,7 @@
 // puxado de lá no início da sessão (ver src/lib/sync/pull.js).
 
 import { pushConfigProduto, pushRemoverConfigProduto, pushConfigsEmLote } from './sync/push';
+import { salvarLocalComFallback } from './storageSeguro';
 
 export const CHAVE_CONFIG_PRODUTOS = 'ic_supra_config_produtos_v1';
 const CHAVE = CHAVE_CONFIG_PRODUTOS;
@@ -19,7 +20,7 @@ function lerTudo() {
 }
 
 function salvarTudo(obj) {
-  localStorage.setItem(CHAVE, JSON.stringify(obj));
+  salvarLocalComFallback(CHAVE, obj);
 }
 
 export function getConfigProduto(codigo) {
@@ -34,16 +35,18 @@ export function getTodasConfigs() {
 export function salvarConfigProduto(codigo, config) {
   const todos = lerTudo();
   todos[codigo] = { ...todos[codigo], ...config, atualizadoEm: new Date().toISOString() };
-  salvarTudo(todos);
+  // Push antes do salvamento local: se o localStorage estiver cheio e
+  // lançar, o envio pro Supabase já foi disparado mesmo assim.
   pushConfigProduto(codigo, todos[codigo]);
+  salvarTudo(todos);
   return todos[codigo];
 }
 
 export function removerConfigProduto(codigo) {
   const todos = lerTudo();
   delete todos[codigo];
-  salvarTudo(todos);
   pushRemoverConfigProduto(codigo);
+  salvarTudo(todos);
 }
 
 export function importarConfigsEmLote(mapaCodigoConfig) {
@@ -52,6 +55,6 @@ export function importarConfigsEmLote(mapaCodigoConfig) {
   for (const [codigo, config] of Object.entries(mapaCodigoConfig)) {
     todos[codigo] = { ...todos[codigo], ...config, atualizadoEm: agora };
   }
-  salvarTudo(todos);
   pushConfigsEmLote(mapaCodigoConfig, todos);
+  salvarTudo(todos);
 }

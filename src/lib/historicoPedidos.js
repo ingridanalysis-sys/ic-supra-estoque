@@ -1,13 +1,17 @@
 import { pushSnapshot, pushPedidoUpsert } from './sync/push';
+import { salvarLocalComFallback } from './storageSeguro';
 
 export const CHAVE_SNAPSHOTS = 'ic_supra_snapshots_v1';
 export const CHAVE_PEDIDOS = 'ic_supra_pedidos_v1';
 
-// Só os 2 snapshots mais recentes ficam no localStorage — cada um carrega o
-// catálogo inteiro (~10 mil itens), então guardar histórico ilimitado aqui
-// estoura a cota do navegador. O histórico completo (todo snapshot já
-// gerado) é preservado no Supabase, insert-only — ver src/lib/sync/push.js.
-const MAX_SNAPSHOTS_LOCAIS = 2;
+// Só o snapshot mais recente fica no localStorage — cada um carrega o
+// catálogo inteiro (~10 mil itens), então guardar mais de um aqui já é
+// suficiente pra estourar a cota do navegador (visto na prática: 10 mil
+// itens + vários meses de vendas ultrapassam os 5-10MB típicos por site).
+// O histórico completo (todo snapshot já gerado) é preservado no Supabase,
+// insert-only — ver src/lib/sync/push.js. A comparação "vs. snapshot
+// anterior" no Dashboard usa o que sobrar puxado do Supabase, quando houver.
+const MAX_SNAPSHOTS_LOCAIS = 1;
 
 function ler(chave, padrao) {
   try {
@@ -19,7 +23,7 @@ function ler(chave, padrao) {
 }
 
 function salvar(chave, valor) {
-  localStorage.setItem(chave, JSON.stringify(valor));
+  salvarLocalComFallback(chave, valor);
 }
 
 // ---------- Snapshots de estoque ----------

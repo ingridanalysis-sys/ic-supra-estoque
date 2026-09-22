@@ -8,8 +8,15 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { CHAVE_CONFIG_PRODUTOS } from '../configProdutos';
 import { CHAVE_SNAPSHOTS, CHAVE_PEDIDOS } from '../historicoPedidos';
-import { CHAVE_VENDAS_MENSAIS } from '../historicoVendas';
+import { CHAVE_VENDAS_MENSAIS, MAX_MESES_LOCAIS, podarParaLimiteLocal } from '../historicoVendas';
 import { CHAVE_FORNECEDORES, CHAVE_VINCULOS } from '../fornecedores';
+import { salvarLocalComFallback } from '../storageSeguro';
+
+// Só o snapshot mais recente fica em cache local (mesmo limite de
+// src/lib/historicoPedidos.js) — puxar o histórico inteiro de volta do
+// Supabase a cada login é a forma mais fácil de estourar a cota do
+// navegador logo na abertura da sessão.
+const MAX_SNAPSHOTS_LOCAIS = 1;
 
 function lerLocal(chave, padrao) {
   try {
@@ -21,7 +28,7 @@ function lerLocal(chave, padrao) {
 }
 
 function salvarLocal(chave, valor) {
-  localStorage.setItem(chave, JSON.stringify(valor));
+  salvarLocalComFallback(chave, valor);
 }
 
 async function puxarConfigProdutos() {
@@ -55,7 +62,7 @@ async function puxarSnapshots() {
     .from('snapshots_estoque')
     .select('*')
     .order('criado_em', { ascending: false })
-    .limit(2);
+    .limit(MAX_SNAPSHOTS_LOCAIS);
   if (error) throw error;
   if (!snaps || snaps.length === 0) return;
 
@@ -102,7 +109,7 @@ async function puxarSnapshots() {
   // prevalecer com segurança quando o id já existe dos dois lados.
   for (const r of remotos) porId.set(r.id, r);
   const unidos = Array.from(porId.values()).sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
-  salvarLocal(CHAVE_SNAPSHOTS, unidos.slice(0, 2));
+  salvarLocal(CHAVE_SNAPSHOTS, unidos.slice(0, MAX_SNAPSHOTS_LOCAIS));
 }
 
 async function puxarPedidos() {
@@ -153,11 +160,23 @@ async function puxarPedidos() {
 }
 
 async function puxarVendas() {
-  const { data: meses, error } = await supabase.from('vendas_mensais').select('*');
+  // Só busca o item a item dos meses mais recentes — puxar TODO o histórico
+  // (que só cresce, mês a mês, pra sempre) a cada login gastaria banda e
+  // memória à toa, já que só os mais recentes cabem no cache local mesmo
+  // (ver podarParaLimiteLocal em src/lib/historicoVendas.js).
+  const { data: todosMeses, error: erroMeses } = await supabase
+    .from('vendas_mensais')
+    .select('mes_chave')
+    .order('mes_chave', { ascending: false })
+    .limit(MAX_MESES_LOCAIS);
+  if (erroMeses) throw erroMeses;
+  if (!todosMeses || todosMeses.length === 0) return;
+
+  const chaves = todosMeses.map((m) => m.mes_chave);
+  const { data: meses, error } = await supabase.from('vendas_mensais').select('*').in('mes_chave', chaves);
   if (error) throw error;
   if (!meses || meses.length === 0) return;
 
-  const chaves = meses.map((m) => m.mes_chave);
   const { data: itens, error: erroItens } = await supabase
     .from('itens_venda_mensal')
     .select('*')
@@ -196,7 +215,7 @@ async function puxarVendas() {
       local[m.mes_chave] = remoto;
     }
   }
-  salvarLocal(CHAVE_VENDAS_MENSAIS, local);
+  salvarLocal(CHAVE_VENDAS_MENSAIS, podarParaLimiteLocal(local));
 }
 
 async function puxarFornecedores() {

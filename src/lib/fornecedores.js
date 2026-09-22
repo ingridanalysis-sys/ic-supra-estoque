@@ -11,6 +11,7 @@ import {
   pushVinculoUpsert,
   pushRemoverVinculo,
 } from './sync/push';
+import { salvarLocalComFallback } from './storageSeguro';
 
 export const CHAVE_FORNECEDORES = 'ic_supra_fornecedores_v1';
 export const CHAVE_VINCULOS = 'ic_supra_produto_fornecedor_v1';
@@ -25,7 +26,7 @@ function ler(chave, padrao) {
 }
 
 function salvar(chave, valor) {
-  localStorage.setItem(chave, JSON.stringify(valor));
+  salvarLocalComFallback(chave, valor);
 }
 
 // ---------- Fornecedores ----------

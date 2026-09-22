@@ -3,9 +3,29 @@
 // confirmar com o usuário antes — ver ImportarVendas.jsx), nunca duplica.
 
 import { pushVendasMes, pushRemoverVendasMes } from './sync/push';
+import { salvarLocalComFallback } from './storageSeguro';
 
 export const CHAVE_VENDAS_MENSAIS = 'ic_supra_vendas_mensais_v1';
 const CHAVE = CHAVE_VENDAS_MENSAIS;
+
+// Cada mês guarda o item a item de todo o catálogo vendido — sem limite,
+// isso cresce pra sempre e, junto com o snapshot de estoque (~10 mil
+// itens), estoura a cota do navegador (visto na prática). Só os meses mais
+// recentes ficam em cache local; o histórico completo (todo mês já
+// importado) é preservado no Supabase, puxado de volta quando precisar —
+// ver src/lib/sync/pull.js. "Todos os meses importados" nos filtros da UI
+// reflete o que está em cache local, não necessariamente o histórico
+// inteiro desde sempre.
+export const MAX_MESES_LOCAIS = 6;
+
+/** Mantém só os N meses mais recentes (por mesChave) — usado aqui e em src/lib/sync/pull.js. */
+export function podarParaLimiteLocal(obj) {
+  const chaves = Object.keys(obj).sort();
+  const recentes = chaves.slice(-MAX_MESES_LOCAIS);
+  const podado = {};
+  for (const k of recentes) podado[k] = obj[k];
+  return podado;
+}
 
 function ler() {
   try {
@@ -17,7 +37,7 @@ function ler() {
 }
 
 function salvar(obj) {
-  localStorage.setItem(CHAVE, JSON.stringify(obj));
+  salvarLocalComFallback(CHAVE, podarParaLimiteLocal(obj));
 }
 
 export function getTodasVendas() {
@@ -50,16 +70,20 @@ export function salvarVendasMes(relatorioParsed, nomeArquivo) {
     importadoEm: new Date().toISOString(),
   };
   todos[chave] = registro;
-  salvar(todos);
+  // Push antes do salvamento local: se o localStorage estiver cheio e
+  // lançar (ou o podado remover esse mês da lista local), o envio pro
+  // Supabase já foi disparado mesmo assim — o histórico completo lá nunca
+  // é podado.
   pushVendasMes(registro);
+  salvar(todos);
   return registro;
 }
 
 export function removerVendasMes(mesChave) {
   const todos = ler();
   delete todos[mesChave];
-  salvar(todos);
   pushRemoverVendasMes(mesChave);
+  salvar(todos);
 }
 
 /**

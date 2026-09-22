@@ -28,10 +28,15 @@ export default function EscoamentoEstoque({ itensEstoque }) {
   const [limite, setLimite] = useState(50);
   const [exportando, setExportando] = useState(false);
 
-  const mesesRecentes = useMemo(
-    () => listarMesesImportados().slice(-QTD_MESES_RECENTES),
-    []
-  );
+  // listarMesesImportados() lê o localStorage direto (não é estado React),
+  // então precisa ser lido de novo a cada render pra refletir uma
+  // importação de vendas nova — sem isso, a tela ficava presa no que
+  // existia da primeira vez que montou. A chave abaixo (não a lista em si,
+  // que é uma referência nova a cada render) é o que entra na dependência
+  // do useMemo pesado logo adiante, pra ele só recalcular quando os MESES
+  // realmente mudam, não a cada render.
+  const mesesRecentes = listarMesesImportados().slice(-QTD_MESES_RECENTES);
+  const chaveMesesRecentes = mesesRecentes.map((m) => m.mesChave).join('|');
 
   const itensParaEscoamento = useMemo(() => {
     if (mesesRecentes.length === 0) return [];
@@ -45,7 +50,8 @@ export default function EscoamentoEstoque({ itensEstoque }) {
       .map((i) => ({ ...i, setor: configs[i.codigo]?.setor ?? inferirSetor(i.descricao) }));
     itens.sort((a, b) => b.total - a.total);
     return itens;
-  }, [itensEstoque, mesesRecentes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itensEstoque, chaveMesesRecentes]);
 
   const valorTotalEscoamento = itensParaEscoamento.reduce((s, i) => s + i.total, 0);
   const listaExibida = itensParaEscoamento.slice(0, limite);

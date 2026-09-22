@@ -10,7 +10,14 @@ import { baixarPdf } from '../lib/ordemCompraPdf';
 // estão parados sem giro (não porque estão zerados, que é o caso oposto,
 // já tratado em Alertas de Compra).
 
-const QTD_MESES_RECENTES = 3;
+const QTD_MESES_RECENTES_PADRAO = 3;
+
+const OPCOES_JANELA = [
+  { valor: 1, label: 'Último 1 mês' },
+  { valor: 3, label: 'Últimos 3 meses' },
+  { valor: 6, label: 'Últimos 6 meses' },
+  { valor: 'TODOS', label: 'Todos os meses importados' },
+];
 
 const OPCOES_QUANTIDADE = [
   { valor: 10, label: 'Top 10' },
@@ -27,6 +34,7 @@ function fmtMoeda(v) {
 export default function EscoamentoEstoque({ itensEstoque }) {
   const [limite, setLimite] = useState(50);
   const [exportando, setExportando] = useState(false);
+  const [janela, setJanela] = useState(QTD_MESES_RECENTES_PADRAO);
 
   // listarMesesImportados() lê o localStorage direto (não é estado React),
   // então precisa ser lido de novo a cada render pra refletir uma
@@ -35,7 +43,8 @@ export default function EscoamentoEstoque({ itensEstoque }) {
   // que é uma referência nova a cada render) é o que entra na dependência
   // do useMemo pesado logo adiante, pra ele só recalcular quando os MESES
   // realmente mudam, não a cada render.
-  const mesesRecentes = listarMesesImportados().slice(-QTD_MESES_RECENTES);
+  const todosOsMeses = listarMesesImportados();
+  const mesesRecentes = janela === 'TODOS' ? todosOsMeses : todosOsMeses.slice(-janela);
   const chaveMesesRecentes = mesesRecentes.map((m) => m.mesChave).join('|');
 
   const itensParaEscoamento = useMemo(() => {
@@ -78,12 +87,24 @@ export default function EscoamentoEstoque({ itensEstoque }) {
 
   return (
     <div className="card">
-      <h3>Valor para escoamento</h3>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: -4, marginBottom: 14 }}>
-        Produtos com estoque positivo que não aparecem em nenhuma venda dos últimos{' '}
-        {mesesRecentes.length > 0 ? mesesRecentes.length : QTD_MESES_RECENTES} meses importados do Mix de Vendas —
-        sem giro, candidatos a promoção ou liquidação.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h3 style={{ marginBottom: 4 }}>Valor para escoamento</h3>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+            Produtos com estoque positivo que não aparecem em nenhuma venda na janela considerada — sem giro,
+            candidatos a promoção ou liquidação.
+          </p>
+        </div>
+        {todosOsMeses.length > 0 && (
+          <label style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            Janela de vendas{' '}
+            <select value={janela} onChange={(e) => setJanela(e.target.value === 'TODOS' ? 'TODOS' : Number(e.target.value))}>
+              {OPCOES_JANELA.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <div style={{ marginBottom: 14 }} />
 
       {mesesRecentes.length === 0 ? (
         <div className="vazio" style={{ padding: '16px 0' }}>
@@ -92,6 +113,9 @@ export default function EscoamentoEstoque({ itensEstoque }) {
         </div>
       ) : (
         <>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 0, marginBottom: 10 }}>
+            Considerando: {mesesRecentes.map((m) => m.mesLabel).join(', ')}.
+          </p>
           <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
             <div className="kpi-card">
               <div className="kpi-num" style={{ color: 'var(--roxo)' }}>{itensParaEscoamento.length}</div>
@@ -105,7 +129,10 @@ export default function EscoamentoEstoque({ itensEstoque }) {
 
           {itensParaEscoamento.length === 0 ? (
             <div className="vazio" style={{ padding: '10px 0' }}>
-              Nenhum produto com estoque positivo ficou fora das vendas recentes — bom sinal, tudo tem giro.
+              Nenhum produto com estoque positivo ficou fora das vendas nessa janela — bom sinal, tudo tem giro
+              {janela !== 'TODOS' && todosOsMeses.length > mesesRecentes.length && (
+                <> (experimente ampliar pra "Todos os meses importados" pra checar o ano inteiro de uma vez)</>
+              )}.
             </div>
           ) : (
             <>

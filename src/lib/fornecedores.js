@@ -40,6 +40,8 @@ function salvar(chave, valor) {
  *   freteLimiar,                 // R$ — só usado quando modalidadeFrete === 'LIMIAR'
  *   limiteCredito,               // R$ — teto de crédito com esse fornecedor, ou null (sem limite cadastrado)
  *   especialidade,                // nota livre, ex: "Curativos e material" — só informativo
+ *   setor,                        // um de SETORES (src/lib/setores.js), ou null — "em aberto" quando não dá pra
+ *                                 // saber com confiança qual setor esse fornecedor atende
  * }
  */
 
@@ -53,7 +55,7 @@ export function getFornecedor(id) {
 
 export function criarFornecedor({
   nome, email, telefone, envioAutomatico,
-  prazoPagamentoDias, modalidadeFrete, freteLimiar, limiteCredito, especialidade,
+  prazoPagamentoDias, modalidadeFrete, freteLimiar, limiteCredito, especialidade, setor,
 }) {
   const lista = ler(CHAVE_FORNECEDORES, []);
   const agora = new Date().toISOString();
@@ -69,6 +71,7 @@ export function criarFornecedor({
     freteLimiar: freteLimiar ?? null,
     limiteCredito: limiteCredito ?? null,
     especialidade: especialidade?.trim() || null,
+    setor: setor || null,
     criadoEm: agora,
     atualizadoEm: agora,
   };
@@ -214,56 +217,63 @@ export function migrarFornecedoresDeTextoLivre(itensDoSnapshot) {
  * planilha de pedidos já em uso), já cruzada pra não duplicar: nomes que
  * apareciam nas duas com grafia diferente ("HIDROLIGHT" / "HIDROLIGHT
  * ORTOPEDICOS", "BIOFLONRENCE" / "BIOFLORENCE") viraram uma linha só.
- * `especialidade` é só uma nota informativo do que cada um fornece.
+ * `especialidade` é só uma nota informativa do que cada um fornece.
+ * `setor` é um dos valores de SETORES (setores.js) quando dá pra saber com
+ * confiança qual segmento o fornecedor atende — os que não têm uma
+ * correspondência clara (equipamentos, móveis, material genérico, ou o
+ * fornecedor simplesmente não tinha essa informação) ficam com `null`,
+ * "em aberto", pra alguém confirmar depois na aba Fornecedores.
  */
 export const LISTA_FORNECEDORES_PADRAO = [
-  { nome: 'ALECRIM', especialidade: 'Papel' },
-  { nome: 'ABC INSTRUMENTOS CIRURGICO', especialidade: 'Instrumental cirúrgico' },
-  { nome: 'DELLAMED', especialidade: 'Cadeiras de rodas e diversos' },
-  { nome: 'VENOSAN', especialidade: 'Meias de compressão e curativos' },
-  { nome: 'ALO ORTOPEDICOS', especialidade: 'Ortopédicos' },
-  { nome: 'HIDROLIGHT ORTOPEDICOS', especialidade: 'Ortopédicos' },
-  { nome: 'GLC ORTOPEDIA', especialidade: 'Ortopedia' },
-  { nome: 'BIOFLORENCE', especialidade: null },
-  { nome: 'AQUASONUS', especialidade: null },
-  { nome: 'ACCUMED', especialidade: 'Gtech / Premium' },
-  { nome: 'CBMED', especialidade: 'Bic / PA Med' },
-  { nome: 'MEDIHOSP', especialidade: 'Curativos e material' },
-  { nome: 'VITAMEDICAL', especialidade: 'Curativos' },
-  { nome: 'MISSNER', especialidade: 'Curativos e material' },
-  { nome: 'LISMED', especialidade: 'Skinupper — curativos' },
-  { nome: 'MEDBEM', especialidade: null },
-  { nome: 'INOVEN', especialidade: 'Material hospitalar' },
-  { nome: 'CIRURGICA FERNANDES', especialidade: 'Material hospitalar' },
-  { nome: 'LABOR IMPORT', especialidade: 'Material hospitalar' },
-  { nome: 'ANADONA', especialidade: 'Material / avental' },
-  { nome: 'FORTSAN', especialidade: 'Gel / água destilada' },
-  { nome: 'PROLIFE', especialidade: 'Cadeira de rodas' },
-  { nome: 'CDS', especialidade: 'Cadeira de rodas' },
-  { nome: 'MODELO MOVEIS', especialidade: 'Móveis hospitalares' },
-  { nome: 'MEDICATE', especialidade: 'Equipamentos' },
-  { nome: 'DORJA', especialidade: 'Equipamentos' },
-  { nome: 'SHOPPING SAUDE', especialidade: 'Glicosímetro' },
-  { nome: 'RESGATE SP', especialidade: null },
-  { nome: 'RESGATE APH', especialidade: null },
-  { nome: 'CONVATEC', especialidade: null },
-  { nome: 'ARKTUS', especialidade: null },
+  { nome: 'ALECRIM', especialidade: 'Papel', setor: null },
+  { nome: 'ABC INSTRUMENTOS CIRURGICO', especialidade: 'Instrumental cirúrgico', setor: 'Instrumental Cirúrgico' },
+  { nome: 'DELLAMED', especialidade: 'Cadeiras de rodas e diversos', setor: 'Mobilidade' },
+  { nome: 'VENOSAN', especialidade: 'Meias de compressão e curativos', setor: 'Curativos e Feridas' },
+  { nome: 'ALO ORTOPEDICOS', especialidade: 'Ortopédicos', setor: 'Ortopédicos' },
+  { nome: 'HIDROLIGHT ORTOPEDICOS', especialidade: 'Ortopédicos', setor: 'Ortopédicos' },
+  { nome: 'GLC ORTOPEDIA', especialidade: 'Ortopedia', setor: 'Ortopédicos' },
+  { nome: 'BIOFLORENCE', especialidade: null, setor: null },
+  { nome: 'AQUASONUS', especialidade: null, setor: null },
+  { nome: 'ACCUMED', especialidade: 'Gtech / Premium', setor: null },
+  { nome: 'CBMED', especialidade: 'Bic / PA Med', setor: null },
+  { nome: 'MEDIHOSP', especialidade: 'Curativos e material', setor: 'Curativos e Feridas' },
+  { nome: 'VITAMEDICAL', especialidade: 'Curativos', setor: 'Curativos e Feridas' },
+  { nome: 'MISSNER', especialidade: 'Curativos e material', setor: 'Curativos e Feridas' },
+  { nome: 'LISMED', especialidade: 'Skinupper — curativos', setor: 'Curativos e Feridas' },
+  { nome: 'MEDBEM', especialidade: null, setor: null },
+  { nome: 'INOVEN', especialidade: 'Material hospitalar', setor: null },
+  { nome: 'CIRURGICA FERNANDES', especialidade: 'Material hospitalar', setor: null },
+  { nome: 'LABOR IMPORT', especialidade: 'Material hospitalar', setor: null },
+  { nome: 'ANADONA', especialidade: 'Material / avental', setor: 'Enxoval e Higiene' },
+  { nome: 'FORTSAN', especialidade: 'Gel / água destilada', setor: null },
+  { nome: 'PROLIFE', especialidade: 'Cadeira de rodas', setor: 'Mobilidade' },
+  { nome: 'CDS', especialidade: 'Cadeira de rodas', setor: 'Mobilidade' },
+  { nome: 'MODELO MOVEIS', especialidade: 'Móveis hospitalares', setor: null },
+  { nome: 'MEDICATE', especialidade: 'Equipamentos', setor: null },
+  { nome: 'DORJA', especialidade: 'Equipamentos', setor: null },
+  { nome: 'SHOPPING SAUDE', especialidade: 'Glicosímetro', setor: 'Diagnóstico' },
+  { nome: 'RESGATE SP', especialidade: null, setor: null },
+  { nome: 'RESGATE APH', especialidade: null, setor: null },
+  { nome: 'CONVATEC', especialidade: null, setor: 'Ostomia' },
+  { nome: 'ARKTUS', especialidade: null, setor: null },
 ];
 
 /**
  * Cadastra de uma vez a lista consolidada acima, pulando qualquer nome que
- * já exista (case-insensitive) — idempotente, seguro rodar mais de uma vez.
- * Não mexe em fornecedor já cadastrado, mesmo que a especialidade informada
- * aqui seja diferente da que já está salva.
+ * já exista (case-insensitive) — idempotente, seguro rodar mais de uma vez
+ * (e roda sozinha a cada início de sessão, ver App.jsx). Não mexe em
+ * fornecedor já cadastrado, mesmo que a especialidade/setor informado aqui
+ * seja diferente do que já está salvo.
  */
 export function importarListaFornecedoresPadrao() {
   let criados = 0;
   let jaExistiam = 0;
-  for (const { nome, especialidade } of LISTA_FORNECEDORES_PADRAO) {
+  const existentes = new Set(listarFornecedores().map((f) => f.nome.trim().toLowerCase()));
+  for (const { nome, especialidade, setor } of LISTA_FORNECEDORES_PADRAO) {
     const nomeNormalizado = nome.trim().toLowerCase();
-    const existente = listarFornecedores().find((f) => f.nome.trim().toLowerCase() === nomeNormalizado);
-    if (existente) { jaExistiam += 1; continue; }
-    criarFornecedor({ nome, especialidade });
+    if (existentes.has(nomeNormalizado)) { jaExistiam += 1; continue; }
+    criarFornecedor({ nome, especialidade, setor });
+    existentes.add(nomeNormalizado);
     criados += 1;
   }
   return { criados, jaExistiam };

@@ -9,6 +9,25 @@ function fmtMoeda(v) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const OPCOES_ORDENACAO = [
+  { valor: 'FATURAMENTO_DESC', label: 'Faturamento (maior → menor)' },
+  { valor: 'FATURAMENTO_ASC', label: 'Faturamento (menor → maior)' },
+  { valor: 'QUANTIDADE_DESC', label: 'Quantidade (maior → menor)' },
+  { valor: 'QUANTIDADE_ASC', label: 'Quantidade (menor → maior)' },
+];
+
+function ordenarItens(itens, ordenacao) {
+  const ordenados = [...itens];
+  switch (ordenacao) {
+    case 'FATURAMENTO_ASC': return ordenados.sort((a, b) => a.totVendas - b.totVendas);
+    case 'QUANTIDADE_DESC': return ordenados.sort((a, b) => b.qtdeVolumes - a.qtdeVolumes);
+    case 'QUANTIDADE_ASC': return ordenados.sort((a, b) => a.qtdeVolumes - b.qtdeVolumes);
+    case 'FATURAMENTO_DESC':
+    default:
+      return ordenados.sort((a, b) => b.totVendas - a.totVendas);
+  }
+}
+
 function StatCard({ label, valor, sub, cor }) {
   return (
     <div className="kpi-card">
@@ -34,6 +53,7 @@ export default function MixVendas() {
   const meses = useMemo(() => listarMesesImportados(), [versao]);
   const [mesSelecionado, setMesSelecionado] = useState('ACUMULADO');
   const [filtroSetor, setFiltroSetor] = useState('TODOS');
+  const [ordenacao, setOrdenacao] = useState('FATURAMENTO_DESC');
   const [setoresFechados, setSetoresFechados] = useState(() => new Set());
 
   // itens do período selecionado, já com o valor somado por produto quando
@@ -84,12 +104,11 @@ export default function MixVendas() {
     }
     const grupos = Array.from(mapa.entries()).map(([setor, itens]) => {
       const totalSetor = itens.reduce((s, i) => s + i.totVendas, 0);
-      const itensOrdenados = [...itens].sort((a, b) => b.totVendas - a.totVendas);
-      return { setor, itens: itensOrdenados, totalSetor };
+      return { setor, itens: ordenarItens(itens, ordenacao), totalSetor };
     });
     grupos.sort((a, b) => b.totalSetor - a.totalSetor);
     return grupos;
-  }, [itensDoPeriodo]);
+  }, [itensDoPeriodo, ordenacao]);
 
   const maiorSetor = Math.max(1, ...gruposPorSetor.map((g) => g.totalSetor));
 
@@ -189,6 +208,9 @@ export default function MixVendas() {
             <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)} style={{ marginLeft: 'auto' }}>
               <option value="TODOS">Todos os setores</option>
               {gruposPorSetor.map((g) => <option key={g.setor} value={g.setor}>{g.setor}</option>)}
+            </select>
+            <select value={ordenacao} onChange={(e) => setOrdenacao(e.target.value)}>
+              {OPCOES_ORDENACAO.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
             </select>
             <button className="btn secundario pequeno" onClick={expandirTodos}>Expandir todos</button>
             <button className="btn secundario pequeno" onClick={retrairTodos}>Retrair todos</button>

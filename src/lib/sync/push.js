@@ -200,6 +200,7 @@ export async function pushFornecedorUpsert(fornecedor) {
       frete_limiar: fornecedor.freteLimiar ?? null,
       limite_credito: fornecedor.limiteCredito ?? null,
       especialidade: fornecedor.especialidade ?? null,
+      setor: fornecedor.setor ?? null,
       criado_em: fornecedor.criadoEm,
       atualizado_em: fornecedor.atualizadoEm ?? new Date().toISOString(),
     });

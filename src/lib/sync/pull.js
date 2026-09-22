@@ -263,6 +263,7 @@ async function puxarFornecedores() {
       freteLimiar: row.frete_limiar != null ? Number(row.frete_limiar) : null,
       limiteCredito: row.limite_credito != null ? Number(row.limite_credito) : null,
       especialidade: row.especialidade,
+      setor: row.setor,
       criadoEm: row.criado_em,
       atualizadoEm: row.atualizado_em,
     };

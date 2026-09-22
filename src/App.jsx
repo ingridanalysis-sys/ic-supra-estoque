@@ -12,6 +12,7 @@ import { getUltimoSnapshot } from './lib/historicoPedidos';
 import { gerarPainelAlertas } from './lib/alertas';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { pullTudoDoSupabase } from './lib/sync/pull';
+import { importarListaFornecedoresPadrao } from './lib/fornecedores';
 
 const ABAS = [
   { chave: 'dashboard', label: 'Visão Geral' },
@@ -73,11 +74,21 @@ export default function App() {
     setSincronizando(true); // cobre o caso de logout → login sem recarregar a página
     pullTudoDoSupabase().finally(() => {
       if (cancelado) return;
+      // Só depois do pull — assim, se outro dispositivo/sessão já tiver
+      // cadastrado algum desses fornecedores, o pull já trouxe pro local
+      // antes desse cadastro-padrão rodar, e ele não duplica.
+      importarListaFornecedoresPadrao();
       setSnapshot(getUltimoSnapshot());
       setSincronizando(false);
     });
     return () => { cancelado = true; };
   }, [usuario?.id]);
+
+  // Modo local (sem Supabase): não tem pull pra esperar, roda direto uma vez.
+  useEffect(() => {
+    if (isSupabaseConfigured()) return;
+    importarListaFornecedoresPadrao();
+  }, []);
 
   function handleLogout() {
     supabase.auth.signOut();

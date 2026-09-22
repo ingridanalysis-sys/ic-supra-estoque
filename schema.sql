@@ -91,6 +91,7 @@ create table if not exists fornecedores (
   frete_limiar numeric(12,2),
   limite_credito numeric(12,2),
   especialidade text, -- nota livre (ex: "Curativos e material") — só informativo
+  setor text, -- um dos valores de SETORES (src/lib/setores.js), ou null ("em aberto")
   criado_em timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
@@ -104,6 +105,7 @@ alter table fornecedores add constraint fornecedores_modalidade_frete_check
 alter table fornecedores add column if not exists frete_limiar numeric(12,2);
 alter table fornecedores add column if not exists limite_credito numeric(12,2);
 alter table fornecedores add column if not exists especialidade text;
+alter table fornecedores add column if not exists setor text;
 
 -- Vínculo produto↔fornecedor: custo e disponibilidade são por PAR, não por
 -- produto — o mesmo item pode custar diferente e estar disponível em um

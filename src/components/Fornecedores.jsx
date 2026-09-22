@@ -6,8 +6,8 @@ import {
   atualizarFornecedor,
   desativarFornecedor,
   migrarFornecedoresDeTextoLivre,
-  importarListaFornecedoresPadrao,
 } from '../lib/fornecedores';
+import { SETORES } from '../lib/setores';
 
 function fmtMoeda(v) {
   return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -16,7 +16,7 @@ function fmtMoeda(v) {
 const PRAZOS_PADRAO = [30, 45, 60];
 
 const FORM_VAZIO = {
-  nome: '', email: '', telefone: '', envioAutomatico: false,
+  nome: '', email: '', telefone: '', envioAutomatico: false, setor: '',
   prazoPagamentoDias: '', modalidadeFrete: '', freteLimiar: '', limiteCredito: '', especialidade: '',
 };
 
@@ -36,6 +36,7 @@ function FormFornecedor({ inicial, titulo, onSalvar, onCancelar }) {
       freteLimiar: dados.freteLimiar === '' ? null : Number(dados.freteLimiar),
       limiteCredito: dados.limiteCredito === '' ? null : Number(dados.limiteCredito),
       especialidade: dados.especialidade?.trim() || null,
+      setor: dados.setor || null,
     });
   }
 
@@ -58,6 +59,13 @@ function FormFornecedor({ inicial, titulo, onSalvar, onCancelar }) {
         <label style={{ fontSize: 11 }}>
           Especialidade (nota livre){' '}
           <input type="text" value={dados.especialidade ?? ''} onChange={(e) => campo('especialidade', e.target.value)} style={{ width: 200 }} placeholder="ex: Curativos e material" />
+        </label>
+        <label style={{ fontSize: 11 }}>
+          Setor{' '}
+          <select value={dados.setor ?? ''} onChange={(e) => campo('setor', e.target.value)}>
+            <option value="">Em aberto — sem vínculo definido</option>
+            {SETORES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
         </label>
       </div>
 
@@ -132,6 +140,7 @@ export default function Fornecedores() {
   const [criando, setCriando] = useState(false);
   const [editando, setEditando] = useState(null);
   const [busca, setBusca] = useState('');
+  const [filtroSetor, setFiltroSetor] = useState('TODOS');
 
   function recarregar() {
     setFornecedores(listarFornecedores());
@@ -156,8 +165,10 @@ export default function Fornecedores() {
       const b = busca.trim().toLowerCase();
       lista = lista.filter((f) => f.nome.toLowerCase().includes(b));
     }
+    if (filtroSetor === 'ABERTO') lista = lista.filter((f) => !f.setor);
+    else if (filtroSetor !== 'TODOS') lista = lista.filter((f) => f.setor === filtroSetor);
     return [...lista].sort((a, b) => (a.ativo === b.ativo ? a.nome.localeCompare(b.nome) : a.ativo ? -1 : 1));
-  }, [fornecedores, busca]);
+  }, [fornecedores, busca, filtroSetor]);
 
   function handleImportar() {
     const raw = localStorage.getItem('ic_supra_snapshots_v1');
@@ -176,15 +187,6 @@ export default function Fornecedores() {
     recarregar();
   }
 
-  function handleImportarListaPadrao() {
-    const resumo = importarListaFornecedoresPadrao();
-    window.alert(
-      `${resumo.criados} fornecedor(es) novo(s) cadastrado(s) a partir da lista consolidada` +
-      (resumo.jaExistiam > 0 ? ` (${resumo.jaExistiam} já existiam e foram mantidos como estavam).` : '.')
-    );
-    recarregar();
-  }
-
   return (
     <div>
       <h2>Fornecedores</h2>
@@ -196,12 +198,14 @@ export default function Fornecedores() {
 
       <div className="filtros">
         <button className="btn pequeno" onClick={() => setCriando(true)}>+ Novo fornecedor</button>
-        <button className="btn secundario pequeno" onClick={handleImportarListaPadrao}>
-          Importar lista consolidada de fornecedores
-        </button>
         <button className="btn secundario pequeno" onClick={handleImportar}>
           Importar fornecedores já digitados nos produtos
         </button>
+        <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)}>
+          <option value="TODOS">Todos os setores</option>
+          <option value="ABERTO">Em aberto (sem setor definido)</option>
+          {SETORES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <input
           type="text"
           placeholder="Buscar fornecedor…"
@@ -236,6 +240,7 @@ export default function Fornecedores() {
                 nome: f.nome, email: f.email ?? '', telefone: f.telefone ?? '', envioAutomatico: f.envioAutomatico,
                 prazoPagamentoDias: f.prazoPagamentoDias ?? '', modalidadeFrete: f.modalidadeFrete ?? '',
                 freteLimiar: f.freteLimiar ?? '', limiteCredito: f.limiteCredito ?? '', especialidade: f.especialidade ?? '',
+                setor: f.setor ?? '',
               }}
               titulo={`Editando ${f.nome}`}
               onSalvar={(dados) => { atualizarFornecedor(f.id, dados); setEditando(null); recarregar(); }}
@@ -250,7 +255,10 @@ export default function Fornecedores() {
           <div className="card" key={f.id} style={{ opacity: f.ativo ? 1 : 0.6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <div>
-                <strong>{f.nome}</strong> {!f.ativo && <span className="tag" style={{ color: 'var(--muted)', background: 'var(--cinza)' }}>Inativo</span>}
+                <strong>{f.nome}</strong> {!f.ativo && <span className="tag" style={{ color: 'var(--muted)', background: 'var(--cinza)' }}>Inativo</span>}{' '}
+                <span className="tag" style={{ color: f.setor ? 'var(--azul)' : 'var(--muted)', background: f.setor ? 'var(--azul-claro)' : 'var(--cinza)' }}>
+                  {f.setor || 'Em aberto'}
+                </span>
                 {f.especialidade && <span style={{ fontSize: 11, color: 'var(--muted)' }}> — {f.especialidade}</span>}
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   {f.email || 'sem e-mail cadastrado'} · {f.telefone || 'sem telefone cadastrado'} ·{' '}

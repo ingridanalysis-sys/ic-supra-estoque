@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { gerarOrdemCompraPdf, baixarPdf } from '../lib/ordemCompraPdf';
 import { criarPedido } from '../lib/historicoPedidos';
 import { getConfigProduto, salvarConfigProduto } from '../lib/configProdutos';
-import { listarVinculos, listarFornecedores, marcarDisponibilidade, calcularModalidadeFrete } from '../lib/fornecedores';
+import { listarVinculos, listarFornecedores, marcarDisponibilidade, calcularModalidadeFrete, vincularProdutoFornecedor } from '../lib/fornecedores';
 
 function fmtMoeda(v) {
   return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -10,13 +10,28 @@ function fmtMoeda(v) {
 
 const MANUAL = '__manual__';
 
-/** Fornecedores cadastrados, disponíveis e ativos pra um código, ordenados do mais barato pro mais caro. */
+/** Fornecedores já vinculados a esse código específico, disponíveis e ativos, ordenados do mais barato pro mais caro. */
 function opcoesFornecedor(codigo, vinculos, fornecedores) {
   return vinculos
     .filter((v) => v.codigo === codigo && v.disponivel)
     .map((v) => ({ vinculo: v, fornecedor: fornecedores.find((f) => f.id === v.fornecedorId) }))
     .filter((x) => x.fornecedor?.ativo)
     .sort((a, b) => (a.vinculo.custoUnitario ?? Infinity) - (b.vinculo.custoUnitario ?? Infinity));
+}
+
+/**
+ * Todos os fornecedores ativos cadastrados, menos os já vinculados a esse
+ * código (que aparecem no grupo acima) — separados em "mesmo setor do
+ * produto" e "demais", pra facilitar achar quem provavelmente atende esse
+ * item mesmo sem vínculo ainda registrado. Escolher um daqui cria o
+ * vínculo na hora (ver handleEscolherFornecedor), então da próxima vez
+ * que esse produto aparecer numa ordem, ele já vem no primeiro grupo.
+ */
+function demaisFornecedores(setorDoItem, jaVinculadosIds, fornecedores) {
+  const restantes = fornecedores.filter((f) => f.ativo && !jaVinculadosIds.has(f.id));
+  const doSetor = restantes.filter((f) => f.setor && f.setor === setorDoItem).sort((a, b) => a.nome.localeCompare(b.nome));
+  const outros = restantes.filter((f) => !(f.setor && f.setor === setorDoItem)).sort((a, b) => a.nome.localeCompare(b.nome));
+  return { doSetor, outros };
 }
 
 export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCriado }) {
@@ -171,6 +186,8 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
             const c = campos[item.codigo] ?? {};
             const subtotal = (Number(c.qtd) || 0) * (Number(c.custoUnit) || 0);
             const opcoes = opcoesFornecedor(item.codigo, vinculos, fornecedores);
+            const jaVinculadosIds = new Set(opcoes.map((o) => o.fornecedor.id));
+            const { doSetor, outros } = demaisFornecedores(item.setor, jaVinculadosIds, fornecedores);
             const usandoManual = !c.fornecedorId;
             return (
               <tr key={item.codigo}>
@@ -191,24 +208,49 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
                     onChange={(e) => {
                       if (e.target.value === MANUAL) {
                         atualizarCampo(item.codigo, 'fornecedorId', null);
-                      } else {
-                        const escolhido = opcoes.find((o) => o.fornecedor.id === e.target.value);
+                        return;
+                      }
+                      const fornecedorId = e.target.value;
+                      const jaVinculado = opcoes.find((o) => o.fornecedor.id === fornecedorId);
+                      if (jaVinculado) {
                         setCampos((cc) => ({
                           ...cc,
                           [item.codigo]: {
                             ...cc[item.codigo],
-                            fornecedorId: e.target.value,
-                            custoUnit: escolhido?.vinculo.custoUnitario ?? cc[item.codigo].custoUnit,
+                            fornecedorId,
+                            custoUnit: jaVinculado.vinculo.custoUnitario ?? cc[item.codigo].custoUnit,
                           },
                         }));
+                      } else {
+                        // Fornecedor cadastrado mas ainda sem vínculo com esse
+                        // produto — cria o vínculo na hora, com o custo já
+                        // digitado na linha, pra da próxima vez já aparecer
+                        // no grupo "vinculados a este produto".
+                        vincularProdutoFornecedor(item.codigo, fornecedorId, { custoUnitario: Number(c.custoUnit) || null, disponivel: true });
+                        setVinculos(listarVinculos());
+                        atualizarCampo(item.codigo, 'fornecedorId', fornecedorId);
                       }
                     }}
                   >
-                    {opcoes.map((o) => (
-                      <option key={o.fornecedor.id} value={o.fornecedor.id}>
-                        {o.fornecedor.nome} {o.vinculo.custoUnitario != null ? `(R$ ${o.vinculo.custoUnitario})` : ''}
-                      </option>
-                    ))}
+                    {opcoes.length > 0 && (
+                      <optgroup label="Vinculados a este produto">
+                        {opcoes.map((o) => (
+                          <option key={o.fornecedor.id} value={o.fornecedor.id}>
+                            {o.fornecedor.nome} {o.vinculo.custoUnitario != null ? `(R$ ${o.vinculo.custoUnitario})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {doSetor.length > 0 && (
+                      <optgroup label={`Fornecedores de ${item.setor}`}>
+                        {doSetor.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                      </optgroup>
+                    )}
+                    {outros.length > 0 && (
+                      <optgroup label="Outros fornecedores cadastrados">
+                        {outros.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                      </optgroup>
+                    )}
                     <option value={MANUAL}>Outro (digitar)…</option>
                   </select>
                   {usandoManual && (

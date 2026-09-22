@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { listarMesesImportados } from '../lib/historicoVendas';
+import { listarMesesImportados, getTodosCodigosComVendaHistorica } from '../lib/historicoVendas';
 import { getTodasConfigs } from '../lib/configProdutos';
 import { inferirSetor } from '../lib/setores';
 import { gerarRelatorioEscoamentoPdf } from '../lib/relatorioEscoamentoPdf';
@@ -44,14 +44,25 @@ export default function EscoamentoEstoque({ itensEstoque }) {
   // do useMemo pesado logo adiante, pra ele só recalcular quando os MESES
   // realmente mudam, não a cada render.
   const todosOsMeses = listarMesesImportados();
+  // "Todos os meses importados" não fica limitado ao que sobra em cache
+  // local (só os MAX_MESES_LOCAIS mais recentes têm o item a item completo
+  // guardado) — usa o índice histórico de códigos, que nunca é podado, pra
+  // não tratar como "sem giro" um produto que só vendeu num mês que já
+  // saiu do cache. Janelas numéricas (1/3/6) continuam usando o detalhe
+  // real por mês, que é sempre um subconjunto do que está em cache.
   const mesesRecentes = janela === 'TODOS' ? todosOsMeses : todosOsMeses.slice(-janela);
   const chaveMesesRecentes = mesesRecentes.map((m) => m.mesChave).join('|');
+  const historicoCompleto = janela === 'TODOS';
 
   const itensParaEscoamento = useMemo(() => {
-    if (mesesRecentes.length === 0) return [];
-    const codigosComVenda = new Set();
-    for (const mes of mesesRecentes) {
-      for (const item of mes.itens) codigosComVenda.add(item.codigo);
+    if (todosOsMeses.length === 0) return [];
+    let codigosComVenda;
+    if (historicoCompleto) {
+      codigosComVenda = getTodosCodigosComVendaHistorica();
+      for (const mes of mesesRecentes) for (const item of mes.itens) codigosComVenda.add(item.codigo);
+    } else {
+      codigosComVenda = new Set();
+      for (const mes of mesesRecentes) for (const item of mes.itens) codigosComVenda.add(item.codigo);
     }
     const configs = getTodasConfigs();
     const itens = itensEstoque
@@ -60,7 +71,7 @@ export default function EscoamentoEstoque({ itensEstoque }) {
     itens.sort((a, b) => b.total - a.total);
     return itens;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itensEstoque, chaveMesesRecentes]);
+  }, [itensEstoque, chaveMesesRecentes, historicoCompleto]);
 
   const valorTotalEscoamento = itensParaEscoamento.reduce((s, i) => s + i.total, 0);
   const listaExibida = itensParaEscoamento.slice(0, limite);
@@ -114,7 +125,9 @@ export default function EscoamentoEstoque({ itensEstoque }) {
       ) : (
         <>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 0, marginBottom: 10 }}>
-            Considerando: {mesesRecentes.map((m) => m.mesLabel).join(', ')}.
+            {historicoCompleto
+              ? 'Considerando todo o histórico de vendas já registrado no sistema (não só os meses listados abaixo, que são só os que têm o detalhe completo em cache local).'
+              : `Considerando: ${mesesRecentes.map((m) => m.mesLabel).join(', ')}.`}
           </p>
           <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
             <div className="kpi-card">

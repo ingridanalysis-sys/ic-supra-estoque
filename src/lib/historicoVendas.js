@@ -18,6 +18,18 @@ const CHAVE = CHAVE_VENDAS_MENSAIS;
 // inteiro desde sempre.
 export const MAX_MESES_LOCAIS = 6;
 
+// Índice separado, leve e NUNCA podado: só os códigos que já venderam
+// alguma vez, sem descrição/valores/quantidade — pra 10 mil produtos isso
+// não passa de algumas centenas de KB, nada comparado ao detalhe item a
+// item por mês. Existe porque, quando um mês antigo sai do cache local
+// (acima), a informação "esse código já vendeu" não pode ir junto — senão
+// um produto que só vendeu há 7 meses passaria a parecer "sem giro desde
+// sempre" só por causa do limite de cache, quando na verdade só está fora
+// da janela recente. Isso alimenta a proteção contra "marcar como
+// descontinuado" e a opção "Todos os meses importados" em Valor para
+// Escoamento — ver EscoamentoEstoque.jsx e alertas.js.
+const CHAVE_CODIGOS_VENDA_HISTORICA = 'ic_supra_codigos_venda_historica_v1';
+
 /** Mantém só os N meses mais recentes (por mesChave) — usado aqui e em src/lib/sync/pull.js. */
 export function podarParaLimiteLocal(obj) {
   const chaves = Object.keys(obj).sort();
@@ -38,6 +50,29 @@ function ler() {
 
 function salvar(obj) {
   salvarLocalComFallback(CHAVE, podarParaLimiteLocal(obj));
+}
+
+/** Acrescenta códigos ao índice histórico (nunca remove) — chamado a cada mês importado ou puxado do Supabase. */
+export function registrarCodigosNoIndiceHistorico(codigos) {
+  let raw;
+  try {
+    raw = JSON.parse(localStorage.getItem(CHAVE_CODIGOS_VENDA_HISTORICA) || '[]');
+  } catch {
+    raw = [];
+  }
+  const conjunto = new Set(raw);
+  for (const c of codigos) conjunto.add(c);
+  salvarLocalComFallback(CHAVE_CODIGOS_VENDA_HISTORICA, Array.from(conjunto));
+}
+
+/** Todos os códigos que já venderam alguma vez, mesmo em meses que já saíram do cache local detalhado. */
+export function getTodosCodigosComVendaHistorica() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CHAVE_CODIGOS_VENDA_HISTORICA) || '[]');
+    return new Set(raw);
+  } catch {
+    return new Set();
+  }
 }
 
 export function getTodasVendas() {
@@ -76,6 +111,7 @@ export function salvarVendasMes(relatorioParsed, nomeArquivo) {
   // é podado.
   pushVendasMes(registro);
   salvar(todos);
+  registrarCodigosNoIndiceHistorico(relatorioParsed.itens.map((i) => i.codigo));
   return registro;
 }
 
@@ -120,11 +156,15 @@ export function getResumoVendasPorProduto() {
 }
 
 /**
- * Conjunto de códigos com pelo menos uma venda registrada em algum mês
- * importado. Usado para proteger produtos de qualquer marcação de
- * "descontinuado" — zerado no estoque significa "precisa comprar", nunca
- * "descontinuar", quando o item vende.
+ * Conjunto de códigos com pelo menos uma venda registrada, em algum mês já
+ * importado — inclui tanto os meses ainda com detalhe completo em cache
+ * local quanto os mais antigos que só sobrevivem no índice leve (ver
+ * CHAVE_CODIGOS_VENDA_HISTORICA acima). Usado para proteger produtos de
+ * qualquer marcação de "descontinuado" — zerado no estoque significa
+ * "precisa comprar", nunca "descontinuar", quando o item vende.
  */
 export function getCodigosComVendaRegistrada() {
-  return new Set(Object.keys(getResumoVendasPorProduto()));
+  const doCache = Object.keys(getResumoVendasPorProduto());
+  const doIndice = getTodosCodigosComVendaHistorica();
+  return new Set([...doCache, ...doIndice]);
 }

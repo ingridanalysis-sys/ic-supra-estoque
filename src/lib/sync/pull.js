@@ -8,7 +8,7 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { CHAVE_CONFIG_PRODUTOS } from '../configProdutos';
 import { CHAVE_SNAPSHOTS, CHAVE_PEDIDOS } from '../historicoPedidos';
-import { CHAVE_VENDAS_MENSAIS, MAX_MESES_LOCAIS, podarParaLimiteLocal } from '../historicoVendas';
+import { CHAVE_VENDAS_MENSAIS, MAX_MESES_LOCAIS, podarParaLimiteLocal, registrarCodigosNoIndiceHistorico } from '../historicoVendas';
 import { CHAVE_FORNECEDORES, CHAVE_VINCULOS } from '../fornecedores';
 import { salvarLocalComFallback } from '../storageSeguro';
 
@@ -218,6 +218,31 @@ async function puxarVendas() {
   salvarLocal(CHAVE_VENDAS_MENSAIS, podarParaLimiteLocal(local));
 }
 
+/**
+ * Só os códigos (sem descrição/valores) de TODO o histórico de vendas já
+ * importado, não só os meses recentes cacheados acima — alimenta o índice
+ * leve que nunca é podado (ver registrarCodigosNoIndiceHistorico em
+ * historicoVendas.js), pra um produto que vendeu há muitos meses não virar
+ * falso positivo de "sem giro"/"descontinuar" só por causa do cache local
+ * limitado. Paginado porque isso pode passar de mil linhas com vários meses
+ * de histórico — o limite padrão do PostgREST é 1000 por chamada.
+ */
+async function puxarIndiceCodigosVenda() {
+  const TAMANHO_PAGINA = 1000;
+  const codigos = new Set();
+  for (let inicio = 0; ; inicio += TAMANHO_PAGINA) {
+    const { data, error } = await supabase
+      .from('itens_venda_mensal')
+      .select('codigo')
+      .range(inicio, inicio + TAMANHO_PAGINA - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) codigos.add(row.codigo);
+    if (data.length < TAMANHO_PAGINA) break;
+  }
+  if (codigos.size > 0) registrarCodigosNoIndiceHistorico(codigos);
+}
+
 async function puxarFornecedores() {
   const { data, error } = await supabase.from('fornecedores').select('*');
   if (error) throw error;
@@ -281,6 +306,7 @@ export async function pullTudoDoSupabase() {
     puxarSnapshots(),
     puxarPedidos(),
     puxarVendas(),
+    puxarIndiceCodigosVenda(),
     puxarFornecedores(),
     puxarVinculosProdutoFornecedor(),
   ]);

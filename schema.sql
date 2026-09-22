@@ -83,9 +83,27 @@ create table if not exists fornecedores (
   telefone text,
   envio_automatico boolean not null default false,
   ativo boolean not null default true,
+  -- Condições comerciais por fornecedor, usadas na Ordem de Compra:
+  prazo_pagamento_dias integer,
+  -- 'FOB'/'CIF' fixos, ou 'LIMIAR' — acima de frete_limiar (R$) vira CIF,
+  -- abaixo fica FOB. Cada fornecedor pode assumir uma modalidade diferente.
+  modalidade_frete text check (modalidade_frete in ('FOB', 'CIF', 'LIMIAR')),
+  frete_limiar numeric(12,2),
+  limite_credito numeric(12,2),
+  especialidade text, -- nota livre (ex: "Curativos e material") — só informativo
   criado_em timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
+
+-- Migração pra quem já rodou uma versão anterior deste script.
+alter table fornecedores add column if not exists prazo_pagamento_dias integer;
+alter table fornecedores add column if not exists modalidade_frete text;
+alter table fornecedores drop constraint if exists fornecedores_modalidade_frete_check;
+alter table fornecedores add constraint fornecedores_modalidade_frete_check
+  check (modalidade_frete in ('FOB', 'CIF', 'LIMIAR'));
+alter table fornecedores add column if not exists frete_limiar numeric(12,2);
+alter table fornecedores add column if not exists limite_credito numeric(12,2);
+alter table fornecedores add column if not exists especialidade text;
 
 -- Vínculo produto↔fornecedor: custo e disponibilidade são por PAR, não por
 -- produto — o mesmo item pode custar diferente e estar disponível em um

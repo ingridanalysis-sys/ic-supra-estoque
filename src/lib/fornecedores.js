@@ -33,7 +33,14 @@ function salvar(chave, valor) {
 
 /**
  * Estrutura de um fornecedor:
- * { id, nome, email, telefone, envioAutomatico, ativo, criadoEm, atualizadoEm }
+ * {
+ *   id, nome, email, telefone, envioAutomatico, ativo, criadoEm, atualizadoEm,
+ *   prazoPagamentoDias,          // 30 | 45 | 60 | outro número, ou null
+ *   modalidadeFrete,             // 'FOB' | 'CIF' | 'LIMIAR' | null
+ *   freteLimiar,                 // R$ — só usado quando modalidadeFrete === 'LIMIAR'
+ *   limiteCredito,               // R$ — teto de crédito com esse fornecedor, ou null (sem limite cadastrado)
+ *   especialidade,                // nota livre, ex: "Curativos e material" — só informativo
+ * }
  */
 
 export function listarFornecedores() {
@@ -44,7 +51,10 @@ export function getFornecedor(id) {
   return listarFornecedores().find((f) => f.id === id) ?? null;
 }
 
-export function criarFornecedor({ nome, email, telefone, envioAutomatico }) {
+export function criarFornecedor({
+  nome, email, telefone, envioAutomatico,
+  prazoPagamentoDias, modalidadeFrete, freteLimiar, limiteCredito, especialidade,
+}) {
   const lista = ler(CHAVE_FORNECEDORES, []);
   const agora = new Date().toISOString();
   const fornecedor = {
@@ -54,6 +64,11 @@ export function criarFornecedor({ nome, email, telefone, envioAutomatico }) {
     telefone: telefone?.trim() || null,
     envioAutomatico: !!envioAutomatico,
     ativo: true,
+    prazoPagamentoDias: prazoPagamentoDias ?? null,
+    modalidadeFrete: modalidadeFrete ?? null,
+    freteLimiar: freteLimiar ?? null,
+    limiteCredito: limiteCredito ?? null,
+    especialidade: especialidade?.trim() || null,
     criadoEm: agora,
     atualizadoEm: agora,
   };
@@ -61,6 +76,16 @@ export function criarFornecedor({ nome, email, telefone, envioAutomatico }) {
   salvar(CHAVE_FORNECEDORES, lista);
   pushFornecedorUpsert(fornecedor);
   return fornecedor;
+}
+
+/** Modalidade de frete efetiva pra um pedido de valor `totalPedido`, considerando a regra do fornecedor. */
+export function calcularModalidadeFrete(fornecedor, totalPedido) {
+  if (!fornecedor?.modalidadeFrete) return null;
+  if (fornecedor.modalidadeFrete === 'LIMIAR') {
+    const limiar = fornecedor.freteLimiar ?? 1500;
+    return totalPedido >= limiar ? 'CIF' : 'FOB';
+  }
+  return fornecedor.modalidadeFrete;
 }
 
 export function atualizarFornecedor(id, dados) {
@@ -182,4 +207,64 @@ export function migrarFornecedoresDeTextoLivre(itensDoSnapshot) {
   }
 
   return { fornecedoresCriados, vinculosCriados, ignorados };
+}
+
+/**
+ * Lista consolidada de fornecedores (lista do WhatsApp da Gilcélia + a
+ * planilha de pedidos já em uso), já cruzada pra não duplicar: nomes que
+ * apareciam nas duas com grafia diferente ("HIDROLIGHT" / "HIDROLIGHT
+ * ORTOPEDICOS", "BIOFLONRENCE" / "BIOFLORENCE") viraram uma linha só.
+ * `especialidade` é só uma nota informativo do que cada um fornece.
+ */
+export const LISTA_FORNECEDORES_PADRAO = [
+  { nome: 'ALECRIM', especialidade: 'Papel' },
+  { nome: 'ABC INSTRUMENTOS CIRURGICO', especialidade: 'Instrumental cirúrgico' },
+  { nome: 'DELLAMED', especialidade: 'Cadeiras de rodas e diversos' },
+  { nome: 'VENOSAN', especialidade: 'Meias de compressão e curativos' },
+  { nome: 'ALO ORTOPEDICOS', especialidade: 'Ortopédicos' },
+  { nome: 'HIDROLIGHT ORTOPEDICOS', especialidade: 'Ortopédicos' },
+  { nome: 'GLC ORTOPEDIA', especialidade: 'Ortopedia' },
+  { nome: 'BIOFLORENCE', especialidade: null },
+  { nome: 'AQUASONUS', especialidade: null },
+  { nome: 'ACCUMED', especialidade: 'Gtech / Premium' },
+  { nome: 'CBMED', especialidade: 'Bic / PA Med' },
+  { nome: 'MEDIHOSP', especialidade: 'Curativos e material' },
+  { nome: 'VITAMEDICAL', especialidade: 'Curativos' },
+  { nome: 'MISSNER', especialidade: 'Curativos e material' },
+  { nome: 'LISMED', especialidade: 'Skinupper — curativos' },
+  { nome: 'MEDBEM', especialidade: null },
+  { nome: 'INOVEN', especialidade: 'Material hospitalar' },
+  { nome: 'CIRURGICA FERNANDES', especialidade: 'Material hospitalar' },
+  { nome: 'LABOR IMPORT', especialidade: 'Material hospitalar' },
+  { nome: 'ANADONA', especialidade: 'Material / avental' },
+  { nome: 'FORTSAN', especialidade: 'Gel / água destilada' },
+  { nome: 'PROLIFE', especialidade: 'Cadeira de rodas' },
+  { nome: 'CDS', especialidade: 'Cadeira de rodas' },
+  { nome: 'MODELO MOVEIS', especialidade: 'Móveis hospitalares' },
+  { nome: 'MEDICATE', especialidade: 'Equipamentos' },
+  { nome: 'DORJA', especialidade: 'Equipamentos' },
+  { nome: 'SHOPPING SAUDE', especialidade: 'Glicosímetro' },
+  { nome: 'RESGATE SP', especialidade: null },
+  { nome: 'RESGATE APH', especialidade: null },
+  { nome: 'CONVATEC', especialidade: null },
+  { nome: 'ARKTUS', especialidade: null },
+];
+
+/**
+ * Cadastra de uma vez a lista consolidada acima, pulando qualquer nome que
+ * já exista (case-insensitive) — idempotente, seguro rodar mais de uma vez.
+ * Não mexe em fornecedor já cadastrado, mesmo que a especialidade informada
+ * aqui seja diferente da que já está salva.
+ */
+export function importarListaFornecedoresPadrao() {
+  let criados = 0;
+  let jaExistiam = 0;
+  for (const { nome, especialidade } of LISTA_FORNECEDORES_PADRAO) {
+    const nomeNormalizado = nome.trim().toLowerCase();
+    const existente = listarFornecedores().find((f) => f.nome.trim().toLowerCase() === nomeNormalizado);
+    if (existente) { jaExistiam += 1; continue; }
+    criarFornecedor({ nome, especialidade });
+    criados += 1;
+  }
+  return { criados, jaExistiam };
 }

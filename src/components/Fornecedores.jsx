@@ -6,19 +6,37 @@ import {
   atualizarFornecedor,
   desativarFornecedor,
   migrarFornecedoresDeTextoLivre,
+  importarListaFornecedoresPadrao,
 } from '../lib/fornecedores';
 
 function fmtMoeda(v) {
   return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-const FORM_VAZIO = { nome: '', email: '', telefone: '', envioAutomatico: false };
+const PRAZOS_PADRAO = [30, 45, 60];
+
+const FORM_VAZIO = {
+  nome: '', email: '', telefone: '', envioAutomatico: false,
+  prazoPagamentoDias: '', modalidadeFrete: '', freteLimiar: '', limiteCredito: '', especialidade: '',
+};
 
 function FormFornecedor({ inicial, titulo, onSalvar, onCancelar }) {
   const [dados, setDados] = useState(inicial);
+  const prazoEhPadrao = dados.prazoPagamentoDias === '' || PRAZOS_PADRAO.includes(Number(dados.prazoPagamentoDias));
 
   function campo(chave, valor) {
     setDados((d) => ({ ...d, [chave]: valor }));
+  }
+
+  function handleSalvar() {
+    onSalvar({
+      ...dados,
+      prazoPagamentoDias: dados.prazoPagamentoDias === '' ? null : Number(dados.prazoPagamentoDias),
+      modalidadeFrete: dados.modalidadeFrete || null,
+      freteLimiar: dados.freteLimiar === '' ? null : Number(dados.freteLimiar),
+      limiteCredito: dados.limiteCredito === '' ? null : Number(dados.limiteCredito),
+      especialidade: dados.especialidade?.trim() || null,
+    });
   }
 
   return (
@@ -38,6 +56,52 @@ function FormFornecedor({ inicial, titulo, onSalvar, onCancelar }) {
           <input type="text" value={dados.telefone ?? ''} onChange={(e) => campo('telefone', e.target.value)} style={{ width: 150 }} />
         </label>
         <label style={{ fontSize: 11 }}>
+          Especialidade (nota livre){' '}
+          <input type="text" value={dados.especialidade ?? ''} onChange={(e) => campo('especialidade', e.target.value)} style={{ width: 200 }} placeholder="ex: Curativos e material" />
+        </label>
+      </div>
+
+      <div className="linha-flex" style={{ flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
+        <label style={{ fontSize: 11 }}>
+          Prazo de pagamento{' '}
+          <select
+            value={prazoEhPadrao ? dados.prazoPagamentoDias : 'outro'}
+            onChange={(e) => campo('prazoPagamentoDias', e.target.value === 'outro' ? (dados.prazoPagamentoDias || '') : e.target.value)}
+          >
+            <option value="">Não definido</option>
+            {PRAZOS_PADRAO.map((p) => <option key={p} value={p}>{p} dias</option>)}
+            <option value="outro">Outro…</option>
+          </select>
+        </label>
+        {!prazoEhPadrao && (
+          <label style={{ fontSize: 11 }}>
+            Dias{' '}
+            <input type="number" min="0" value={dados.prazoPagamentoDias} onChange={(e) => campo('prazoPagamentoDias', e.target.value)} style={{ width: 70 }} />
+          </label>
+        )}
+
+        <label style={{ fontSize: 11 }}>
+          Modalidade de frete{' '}
+          <select value={dados.modalidadeFrete ?? ''} onChange={(e) => campo('modalidadeFrete', e.target.value)}>
+            <option value="">Não definida</option>
+            <option value="FOB">FOB (sempre)</option>
+            <option value="CIF">CIF (sempre)</option>
+            <option value="LIMIAR">Acima de um valor vira CIF</option>
+          </select>
+        </label>
+        {dados.modalidadeFrete === 'LIMIAR' && (
+          <label style={{ fontSize: 11 }}>
+            A partir de (R$){' '}
+            <input type="number" min="0" step="0.01" value={dados.freteLimiar} onChange={(e) => campo('freteLimiar', e.target.value)} style={{ width: 90 }} placeholder="1500" />
+          </label>
+        )}
+
+        <label style={{ fontSize: 11 }}>
+          Limite de crédito (R$){' '}
+          <input type="number" min="0" step="0.01" value={dados.limiteCredito} onChange={(e) => campo('limiteCredito', e.target.value)} style={{ width: 100 }} placeholder="sem limite" />
+        </label>
+
+        <label style={{ fontSize: 11 }}>
           <input
             type="checkbox"
             checked={!!dados.envioAutomatico}
@@ -46,12 +110,9 @@ function FormFornecedor({ inicial, titulo, onSalvar, onCancelar }) {
           Envio automático da ordem de compra por e-mail
         </label>
       </div>
+
       <div className="linha-flex" style={{ marginTop: 12, gap: 8 }}>
-        <button
-          className="btn pequeno"
-          disabled={!dados.nome.trim()}
-          onClick={() => onSalvar(dados)}
-        >
+        <button className="btn pequeno" disabled={!dados.nome.trim()} onClick={handleSalvar}>
           Salvar
         </button>
         <button className="btn secundario pequeno" onClick={onCancelar}>Cancelar</button>
@@ -115,6 +176,15 @@ export default function Fornecedores() {
     recarregar();
   }
 
+  function handleImportarListaPadrao() {
+    const resumo = importarListaFornecedoresPadrao();
+    window.alert(
+      `${resumo.criados} fornecedor(es) novo(s) cadastrado(s) a partir da lista consolidada` +
+      (resumo.jaExistiam > 0 ? ` (${resumo.jaExistiam} já existiam e foram mantidos como estavam).` : '.')
+    );
+    recarregar();
+  }
+
   return (
     <div>
       <h2>Fornecedores</h2>
@@ -126,6 +196,9 @@ export default function Fornecedores() {
 
       <div className="filtros">
         <button className="btn pequeno" onClick={() => setCriando(true)}>+ Novo fornecedor</button>
+        <button className="btn secundario pequeno" onClick={handleImportarListaPadrao}>
+          Importar lista consolidada de fornecedores
+        </button>
         <button className="btn secundario pequeno" onClick={handleImportar}>
           Importar fornecedores já digitados nos produtos
         </button>
@@ -159,21 +232,33 @@ export default function Fornecedores() {
           return (
             <FormFornecedor
               key={f.id}
-              inicial={{ nome: f.nome, email: f.email ?? '', telefone: f.telefone ?? '', envioAutomatico: f.envioAutomatico }}
+              inicial={{
+                nome: f.nome, email: f.email ?? '', telefone: f.telefone ?? '', envioAutomatico: f.envioAutomatico,
+                prazoPagamentoDias: f.prazoPagamentoDias ?? '', modalidadeFrete: f.modalidadeFrete ?? '',
+                freteLimiar: f.freteLimiar ?? '', limiteCredito: f.limiteCredito ?? '', especialidade: f.especialidade ?? '',
+              }}
               titulo={`Editando ${f.nome}`}
               onSalvar={(dados) => { atualizarFornecedor(f.id, dados); setEditando(null); recarregar(); }}
               onCancelar={() => setEditando(null)}
             />
           );
         }
+        const frete = f.modalidadeFrete === 'LIMIAR'
+          ? `CIF acima de ${fmtMoeda(f.freteLimiar ?? 1500)}`
+          : (f.modalidadeFrete || 'frete não definido');
         return (
           <div className="card" key={f.id} style={{ opacity: f.ativo ? 1 : 0.6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <div>
                 <strong>{f.nome}</strong> {!f.ativo && <span className="tag" style={{ color: 'var(--muted)', background: 'var(--cinza)' }}>Inativo</span>}
+                {f.especialidade && <span style={{ fontSize: 11, color: 'var(--muted)' }}> — {f.especialidade}</span>}
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                   {f.email || 'sem e-mail cadastrado'} · {f.telefone || 'sem telefone cadastrado'} ·{' '}
                   {f.envioAutomatico ? 'Envio automático ligado' : 'Envio automático desligado'}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  Prazo: {f.prazoPagamentoDias ? `${f.prazoPagamentoDias} dias` : 'não definido'} · Frete: {frete} ·{' '}
+                  Limite de crédito: {f.limiteCredito != null ? fmtMoeda(f.limiteCredito) : 'sem limite cadastrado'}
                 </div>
               </div>
               <div className="linha-flex">

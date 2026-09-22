@@ -2,7 +2,11 @@ import { useMemo, useState } from 'react';
 import { gerarOrdemCompraPdf, baixarPdf } from '../lib/ordemCompraPdf';
 import { criarPedido } from '../lib/historicoPedidos';
 import { getConfigProduto, salvarConfigProduto } from '../lib/configProdutos';
-import { listarVinculos, listarFornecedores, marcarDisponibilidade } from '../lib/fornecedores';
+import { listarVinculos, listarFornecedores, marcarDisponibilidade, calcularModalidadeFrete } from '../lib/fornecedores';
+
+function fmtMoeda(v) {
+  return `R$ ${(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 const MANUAL = '__manual__';
 
@@ -239,15 +243,34 @@ export default function OrdemCompra({ selecionados, onRemoverSelecao, onPedidoCr
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Resumo por fornecedor</h3>
-        {grupos.map((g) => (
-          <div key={g.fornecedor} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-            <span>{g.fornecedor} ({g.itens.length} item(ns))</span>
-            <strong>R$ {g.itens.reduce((s, i) => s + i.qtd * i.custoUnit, 0).toFixed(2).replace('.', ',')}</strong>
-          </div>
-        ))}
-        <div style={{ borderTop: '1px solid var(--cinza-borda)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--azul)' }}>
+        {grupos.map((g) => {
+          const totalGrupo = g.itens.reduce((s, i) => s + i.qtd * i.custoUnit, 0);
+          const fc = g.fornecedorCadastrado;
+          const frete = fc ? calcularModalidadeFrete(fc, totalGrupo) : null;
+          const excedeCredito = fc?.limiteCredito != null && totalGrupo > fc.limiteCredito;
+          return (
+            <div key={g.fornecedor} style={{ padding: '8px 0', borderBottom: '1px solid var(--cinza-borda)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span>{g.fornecedor} ({g.itens.length} item(ns))</span>
+                <strong>{fmtMoeda(totalGrupo)}</strong>
+              </div>
+              {fc && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  Prazo: {fc.prazoPagamentoDias ? `${fc.prazoPagamentoDias} dias` : 'não definido'}
+                  {frete && ` · Frete: ${frete}`}
+                </div>
+              )}
+              {excedeCredito && (
+                <div style={{ fontSize: 11, color: 'var(--vermelho)', marginTop: 2, fontWeight: 600 }}>
+                  ⚠ Total ({fmtMoeda(totalGrupo)}) excede o limite de crédito cadastrado para este fornecedor ({fmtMoeda(fc.limiteCredito)}).
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div style={{ marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--azul)' }}>
           <span>Total geral</span>
-          <span>R$ {valorTotal.toFixed(2).replace('.', ',')}</span>
+          <span>{fmtMoeda(valorTotal)}</span>
         </div>
       </div>
 

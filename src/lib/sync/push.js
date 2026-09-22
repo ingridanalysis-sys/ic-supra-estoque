@@ -195,6 +195,11 @@ export async function pushFornecedorUpsert(fornecedor) {
       telefone: fornecedor.telefone ?? null,
       envio_automatico: !!fornecedor.envioAutomatico,
       ativo: fornecedor.ativo !== false,
+      prazo_pagamento_dias: fornecedor.prazoPagamentoDias ?? null,
+      modalidade_frete: fornecedor.modalidadeFrete ?? null,
+      frete_limiar: fornecedor.freteLimiar ?? null,
+      limite_credito: fornecedor.limiteCredito ?? null,
+      especialidade: fornecedor.especialidade ?? null,
       criado_em: fornecedor.criadoEm,
       atualizado_em: fornecedor.atualizadoEm ?? new Date().toISOString(),
     });

@@ -258,6 +258,11 @@ async function puxarFornecedores() {
       telefone: row.telefone,
       envioAutomatico: row.envio_automatico,
       ativo: row.ativo,
+      prazoPagamentoDias: row.prazo_pagamento_dias,
+      modalidadeFrete: row.modalidade_frete,
+      freteLimiar: row.frete_limiar != null ? Number(row.frete_limiar) : null,
+      limiteCredito: row.limite_credito != null ? Number(row.limite_credito) : null,
+      especialidade: row.especialidade,
       criadoEm: row.criado_em,
       atualizadoEm: row.atualizado_em,
     };

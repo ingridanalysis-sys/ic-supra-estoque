@@ -96,8 +96,12 @@ export async function gerarOrdemCompraPdf({ grupos, referencia, logoBytes, obser
 
   let valorTotalGeral = 0;
 
-  for (const grupo of grupos) {
-    garantirEspaco(60);
+  for (let i = 0; i < grupos.length; i++) {
+    const grupo = grupos[i];
+    // Cada fornecedor começa numa folha nova — nunca dois fornecedores na
+    // mesma página. O primeiro segue na página do cabeçalho inicial; os
+    // demais forçam quebra de página incondicional (não só "se não couber").
+    if (i > 0) novaPagina();
 
     // Cabeçalho do fornecedor
     page.drawRectangle({ x: MARGEM, y: y - 20, width: LARGURA_PAGINA - 2 * MARGEM, height: 22, color: AZUL });
